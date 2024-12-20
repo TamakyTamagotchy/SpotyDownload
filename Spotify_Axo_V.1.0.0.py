@@ -13,23 +13,38 @@ import threading
 import logging
 import queue
 import re
+from PIL import Image
+from io import BytesIO
 import unicodedata
 import requests
 import eyed3
 import qdarkstyle
 from fuzzywuzzy import fuzz
+import lyricsgenius
 
 # Configuración de logging
 logging.basicConfig(filename='Logger_Spotify.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Credenciales de Spotify
-SPOTIFY_CLIENT_ID = '7156ac6acc584ebd8ccd4c58402534e6'
-SPOTIFY_CLIENT_SECRET = '11a8d2a6efed405280769f33ae6425ee'
+# Obtener la ruta del directorio del script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+credentials_path = os.path.join(script_dir, 'spotify_credentials.json')
+
+# Cargar credenciales de Spotify desde archivo JSON
+try:
+    with open(credentials_path) as f:
+        credentials = json.load(f)
+        SPOTIFY_CLIENT_ID = credentials['client_id']
+        SPOTIFY_CLIENT_SECRET = credentials['client_secret']
+        GENIUS_API_TOKEN = credentials['genius_api_token'] # https://genius.com/api-clients
+except Exception as e:
+    logging.error(f'Error al cargar las credenciales: {e}')
+    raise
 
 client_credentials_manager = SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET)
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
 
 ytmusic = YTMusic()
+genius = lyricsgenius.Genius(GENIUS_API_TOKEN)
 
 HISTORY_FILE = "download_history.json"
 
@@ -63,7 +78,7 @@ def search_youtube_music(title, artist, album=None):
         
         for result in results:
             video_title = result['title']
-            video_artist = result['artists'][0]['name']
+            video_artist = ', '.join([a['name'] for a in result['artists']])
             video_album = result.get('album', {}).get('name', '')
             
             title_ratio = fuzz.ratio(title.lower(), video_title.lower())
@@ -76,31 +91,13 @@ def search_youtube_music(title, artist, album=None):
                 highest_ratio = total_ratio
                 best_match = result
         
-        # Si no encuentra en YouTube Music, buscar en YouTube directamente
-        if best_match is None or highest_ratio <= 70:
-            logging.warning(f'No se encontraron resultados confiables en YouTube Music. Intentando búsqueda en YouTube.')
-            
-            # Configurar opciones para búsqueda en YouTube
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'max_downloads': 1,
-                'default_search': 'ytsearch1:',
-                'quiet': True
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(query, download=False)
-                
-                if info and 'entries' in info and info['entries']:
-                    first_result = info['entries'][0]
-                    return first_result['webpage_url']
-                else:
-                    logging.warning(f'No se encontraron resultados en YouTube para: {query}')
-                    return None
-        
         # Si encontró en YouTube Music, retornar enlace
         if best_match and highest_ratio > 70:
             return f"https://music.youtube.com/watch?v={best_match['videoId']}"
+        
+        # Si no encuentra en YouTube Music, buscar en YouTube directamente
+        logging.warning(f'No se encontraron resultados confiables en YouTube Music. Intentando búsqueda en YouTube.')
+        return None
         
     except Exception as e:
         logging.error(f'Error al buscar la canción: {e}')
@@ -157,7 +154,7 @@ def download_song(url, filename, q, quality, pause_event, cancel_event, max_retr
                 q.put({'error': f'No se pudo descargar la canción después de {max_retries} intentos: {e}'})
         except requests.exceptions.RequestException as e:
             logging.error(f'Error de red durante la descarga: {e}')
-            q.put({'error': 'network_error'})
+            q.put({'error': 'error_de_red'})
             return
         except subprocess.CalledProcessError as e:
             logging.error(f'Error al convertir el audio: {e}')
@@ -175,88 +172,152 @@ def download_song(url, filename, q, quality, pause_event, cancel_event, max_retr
             
 def sanitize_filename(title, artist=None, album=None, fallback_method=True):
     """
-    Sanitiza nombres de archivos con estrategias múltiples de limpieza.
+    Sanitize filenames with improved robustness and handling of special characters.
     
     Args:
-        title (str): Título principal para el nombre del archivo
-        artist (str, opcional): Artista para nombre de archivo
-        album (str, opcional): Álbum para nombre de archivo
-        fallback_method (bool): Usar método tradicional si la sanitización falla
+        title (str): Primary title for the filename
+        artist (str, optional): Artist for filename
+        album (str, optional): Album for filename
+        fallback_method (bool): Use fallback naming if sanitization fails
     
     Returns:
-        str: Nombre de archivo sanitizado y seguro
+        str: Sanitized and safe filename
     """
     def clean_base_name(name):
-        """Limpieza base para nombres"""
-        # Eliminar caracteres especiales problemáticos
-        name = re.sub(r'[<>:"/\\|?*¿#\']', '', name)
+        """Advanced filename cleaning"""
+        if not name:
+            return ""
         
-        # Normalizar caracteres Unicode
-        name = unicodedata.normalize('NFKD', name)
+        # Normalize Unicode characters and remove diacritics
+        name = unicodedata.normalize('NFKD', str(name))
         name = name.encode('ASCII', 'ignore').decode('ASCII')
         
-        # Reemplazar espacios múltiples
+        # Remove or replace problematic characters
+        name = re.sub(r'[<>:"/\\|?*¿#\']', '', name)
+        
+        # Replace multiple spaces and trim
         name = re.sub(r'\s+', ' ', name).strip()
         
         return name
-    # Estrategia 1: Usar título completo con artista
-    if artist:
-        filename = f"{clean_base_name(title)} - {clean_base_name(artist)}"
-    else:
-        filename = clean_base_name(title)
-    # Estrategia 2: Agregar álbum si está disponible
-    if album:
-        filename = f"{filename} ({clean_base_name(album)})"
-    # Truncar a 255 caracteres
-    filename = filename[:255]
-    # Fallback si el nombre está vacío
-    if not filename and fallback_method:
-        filename = f"Track_{int(time.time())}"
-    return filename.strip()
-
-def update_mp3_metadata(filename, title, artist, album, cover_image_url, release_date):
-    try:
-        # Sanitizar el título para nombre de archivo
-        safe_filename = sanitize_filename(title)
-        
-        # Construir ruta de archivo segura
-        safe_filepath = os.path.join(
-            os.path.dirname(filename), 
-            f"{safe_filename}.mp3"
-        )
-        
-        # Renombrar archivo si es necesario
-        if safe_filepath != filename:
-            os.rename(filename, safe_filepath)
-            filename = safe_filepath
-        audio = eyed3.load(filename)
-        if audio.tag is None:
-            audio.initTag()     
-        # Usar títulos originales para metadatos
-        audio.tag.title = title
-        audio.tag.artist = artist
-        audio.tag.album = album        
-        # Extraer el año de la fecha de lanzamiento
-        year = release_date.split('-')[0] if release_date else None
-        if year:
-            try:
-                audio.tag.year = int(year)
-            except ValueError:
-                logging.warning(f"No se pudo convertir el año: {year}")
-        audio.tag.release_date = release_date
-        # Manejar imagen de portada con más robustez
-        try:
-            response = requests.get(cover_image_url)
-            if response.status_code == 200:
-                audio.tag.images.set(3, response.content, "image/jpeg", u"cover")
-        except Exception as img_error:
-            logging.error(f'Error al procesar imagen de portada: {img_error}')
-        audio.tag.save(version=(2,3,0))
-        return True
-    except Exception as e:
-        logging.error(f'Error al actualizar los metadatos del MP3: {e}')
-        return False
     
+    try:
+        # Primary filename construction
+        parts = [clean_base_name(title)]
+        
+        # Add artist if available
+        if artist:
+            parts.append(clean_base_name(artist))
+        
+        # Add album in parentheses if available
+        if album:
+            parts.append(f"({clean_base_name(album)})")
+        
+        # Join parts
+        filename = ' '.join(parts)
+        
+        # Truncate to safe length
+        filename = filename[:255]
+        
+        # Fallback for empty filename
+        if not filename and fallback_method:
+            filename = f"Track_{int(time.time())}"
+        
+        return filename.strip()
+    
+    except Exception as e:
+        logging.error(f'Error in filename sanitization: {e}')
+        return f"Track_{int(time.time())}"
+
+def save_lyrics_to_file(lyrics, filename):
+    """
+    Save lyrics to a text file.
+    
+    Args:
+        lyrics (str): Lyrics of the song
+        filename (str): Path to save the lyrics file
+    """
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(lyrics)
+    except Exception as e:
+        logging.error(f'Error saving lyrics to file: {e}')
+
+def update_mp3_metadata(filename, title, artist, album, cover_image_url, release_date, lyrics=None):
+    """
+    Update MP3 metadata with robust error handling and flexibility.
+    
+    Args:
+        filename (str): Path to the MP3 file
+        title (str): Track title
+        artist (str): Track artist(s)
+        album (str): Album name
+        cover_image_url (str): URL of cover image
+        release_date (str): Release date
+        lyrics (str, optional): Lyrics of the song
+    
+    Returns:
+        bool: True if metadata update successful, False otherwise
+    """
+    try:
+        # Ensure the file exists and is a valid MP3
+        if not os.path.exists(filename):
+            logging.error(f'File not found: {filename}')
+            return False
+        
+        # Load the audio file with error handling
+        audio = eyed3.load(filename)
+        if audio is None:
+            logging.error(f'Could not load audio file: {filename}')
+            return False
+        
+        # Initialize tag if not exists
+        if audio.tag is None:
+            audio.initTag()
+        
+        # Set basic metadata with None checks
+        audio.tag.title = title or "Titulo Desconocido"
+        audio.tag.artist = artist or "Artista Desconocido"
+        audio.tag.album = album or "Album Desconocido"
+        
+        # Handle release date and year
+        try:
+            if release_date:
+                # Extract year, handling potential formatting variations
+                year_match = re.search(r'\d{4}', release_date)
+                if year_match:
+                    audio.tag.year = int(year_match.group())
+                audio.tag.release_date = release_date
+        except (ValueError, TypeError) as date_error:
+            logging.warning(f'Invalid release date: {release_date}. Error: {date_error}')
+        
+        # Handle cover image with more robust error checking
+        if cover_image_url:
+            try:
+                response = requests.get(cover_image_url, timeout=10)
+                response.raise_for_status()
+                
+                # Check image type and size
+                image_content = response.content
+                image = Image.open(BytesIO(image_content))
+                
+                # Set image if valid
+                audio.tag.images.set(3, image_content, "image/jpeg", u"Cover")
+            except Exception as img_error:
+                logging.error(f'Cover image processing error: {img_error}')
+        
+        # Set lyrics if available
+        if lyrics:
+            audio.tag.lyrics.set(lyrics)
+        
+        # Save with specific ID3v2.3 version for maximum compatibility
+        audio.tag.save(version=(2,3,0))
+        
+        return True
+    
+    except Exception as e:
+        logging.error(f'Comprehensive metadata update error: {e}')
+        return False
+
 def extract_id(link):
     pattern = re.compile(r'(?:playlist|track)/(\w+)')
     match = pattern.search(link)
@@ -297,6 +358,15 @@ def load_download_history():
             logging.error(f'No se pudo cargar el historial de descargas: {e}')
             return []
     return []
+
+def get_lyrics(title, artist):
+    try:
+        song = genius.search_song(title, artist)
+        if song:
+            return song.lyrics
+    except Exception as e:
+        logging.error(f'Error al obtener la letra de la canción: {e}')
+    return None
 
 class DownloadWorker(QObject):
     progress = pyqtSignal(int)
@@ -360,8 +430,7 @@ class DownloadWorker(QObject):
 
             # Manejar archivos existentes
             if os.path.exists(filename):
-                self.handle_existing_file(song_metadata['song'], filename)
-                if not self.replace_response:
+                if not self.handle_existing_file(song_metadata['song'], filename):
                     self.progress.emit(int((track_index + 1) / total_tracks * 100))
                     return
 
@@ -389,9 +458,11 @@ class DownloadWorker(QObject):
         while self.replace_response is None:
             QThread.msleep(100)
         
-        # Reset replace response for next iteration
         replace_response = self.replace_response
         self.replace_response = None
+        
+        if replace_response:
+            os.remove(filename)
         return replace_response
 
     def find_download_url(self, song_metadata):
@@ -418,9 +489,16 @@ class DownloadWorker(QObject):
                         download=False
                     )
                     
-                    url = (info['entries'][0]['webpage_url'] 
-                        if info and 'entries' in info and info['entries'] 
-                        else None)
+                    if info and 'entries' in info and info['entries']:
+                        for entry in info['entries']:
+                            video_title = entry['title']
+                            video_artist = entry['uploader']
+                            
+                            title_ratio = fuzz.ratio(song_metadata['song'].lower(), video_title.lower())
+                            artist_ratio = fuzz.ratio(song_metadata['artists'].lower(), video_artist.lower())
+                            
+                            if title_ratio > 70 and artist_ratio > 70:
+                                return entry['webpage_url']
             except Exception as e:
                 logging.error(f'Error al buscar en YouTube: {e}')
         
@@ -434,6 +512,17 @@ class DownloadWorker(QObject):
                 self.pause_event, self.cancel_event
             )
 
+            # Obtener letras de la canción
+            lyrics = get_lyrics(song_metadata['song'], song_metadata['artists'])
+
+            # Guardar letras en un archivo de texto separado
+            if lyrics:
+                lyrics_filename = os.path.join(
+                    self.download_folder, 
+                    f'{sanitize_filename(song_metadata["song"])}_letra.txt'
+                )
+                save_lyrics_to_file(lyrics, lyrics_filename)
+
             # Actualizar metadatos
             if update_mp3_metadata(
                 filename, 
@@ -441,7 +530,8 @@ class DownloadWorker(QObject):
                 song_metadata['artists'], 
                 song_metadata['album'], 
                 song_metadata['cover_url'], 
-                song_metadata['release_date']
+                song_metadata['release_date'],
+                lyrics  # Añadir letras a los metadatos
             ):
                 # Emitir información de la pista
                 self.track_info.emit({
@@ -512,6 +602,9 @@ class ModernApp(QMainWindow):
         self.quality_selector = QComboBox()
         self.quality_selector.addItems(["Mejor", "Buena", "Baja"])
 
+        self.download_lyrics_checkbox = QCheckBox("Descargar letras")
+        self.download_lyrics_checkbox.setChecked(True)
+
         self.button = QPushButton("Descargar")
         self.button.setIcon(QIcon.fromTheme("document-save"))
         self.button.setToolTip("Iniciar la descarga de la canción")
@@ -543,6 +636,7 @@ class ModernApp(QMainWindow):
         layout.addWidget(self.label)
         layout.addWidget(self.textinput)
         layout.addWidget(self.quality_selector)
+        layout.addWidget(self.download_lyrics_checkbox)
         layout.addWidget(self.button)
         
         button_layout = QHBoxLayout()
@@ -563,8 +657,8 @@ class ModernApp(QMainWindow):
         history_page = QWidget()
         layout = QVBoxLayout(history_page)
 
-        self.history_table = QTableWidget(0, 5)
-        self.history_table.setHorizontalHeaderLabels(["Título", "Artista", "Álbum", "Fecha", "Archivo"])
+        self.history_table = QTableWidget(0, 6)
+        self.history_table.setHorizontalHeaderLabels(["Título", "Artista", "Álbum", "Fecha", "Archivo", "Existe"])
         self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.history_table.cellDoubleClicked.connect(self.open_file)
         self.history_table.setFont(QFont("Roboto", 10))
@@ -593,6 +687,7 @@ class ModernApp(QMainWindow):
 
         spotify_id = extract_id(spotify_link)
         quality = self.quality_selector.currentText()
+        download_lyrics = self.download_lyrics_checkbox.isChecked()
 
         self.download_folder = QFileDialog.getExistingDirectory(self, "Selecciona la carpeta de descarga")
         if not self.download_folder:
@@ -603,6 +698,7 @@ class ModernApp(QMainWindow):
             return
         
         self.worker = DownloadWorker(spotify_id, self.download_folder, quality)
+        self.worker.download_lyrics = download_lyrics  # Añadir opción de descargar letras
         self.thread = QThread()
         self.worker.moveToThread(self.thread)
 
@@ -684,9 +780,20 @@ class ModernApp(QMainWindow):
     def load_history(self):
         self.history = load_download_history()
         for item in self.history:
+            # Verificar si el archivo aún existe
+            item['exists'] = os.path.exists(item['file_path'])
             self.add_to_history(item, from_load=True)
 
     def add_to_history(self, item, from_load=False):
+        # Verificar si el ítem ya existe en el historial
+        for existing_item in self.history:
+            if (existing_item['spotify_id'] == item['spotify_id'] and
+                existing_item['title'] == item['title'] and
+                existing_item['artist'] == item['artist'] and
+                existing_item['album'] == item['album'] and
+                existing_item['url'] == item['url']):
+                return  # No añadir duplicados exactos
+
         row_position = self.history_table.rowCount()
         self.history_table.insertRow(row_position)
         self.history_table.setItem(row_position, 0, QTableWidgetItem(item['title']))
@@ -694,7 +801,8 @@ class ModernApp(QMainWindow):
         self.history_table.setItem(row_position, 2, QTableWidgetItem(item['album']))
         self.history_table.setItem(row_position, 3, QTableWidgetItem(item['release_date']))
         self.history_table.setItem(row_position, 4, QTableWidgetItem(item['file_path']))
-        
+        self.history_table.setItem(row_position, 5, QTableWidgetItem("Sí" if item.get('exists', True) else "No"))
+
         if not from_load:
             self.history.append(item)
             save_download_history(self.history)
@@ -704,15 +812,11 @@ class ModernApp(QMainWindow):
         if os.path.exists(file_path):
             os.startfile(file_path)
         else:
-            reply = QMessageBox.question(self, 'Archivo no encontrado', 'El archivo no existe. ¿Desea eliminarlo del historial?',
-                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self.history.pop(row)
-                save_download_history(self.history)
-                self.history_table.removeRow(row)
-                
+            QMessageBox.warning(self, "Advertencia", f"El archivo {file_path} no existe.")
+
 if __name__ == "__main__":
-    app = QApplication([])
+    import sys
+    app = QApplication(sys.argv)
     window = ModernApp()
     window.show()
-    app.exec_()
+    sys.exit(app.exec_())
