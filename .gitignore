@@ -6,6 +6,8 @@ __pycache__/
 *.pyc
 *.log
 *.txt
+*.md
+*.json
 # Ignorar credenciales y salidas
 .spotify_cache/
 spotify_credentials.json
@@ -18,26 +20,3 @@ error_output.txt
 # Otros archivos grandes o locales
 *.db
 *.sqlite
-
-# Añadidos: carpetas y archivos que no quieres versionar
-.cache/
-.idea/
-.vscode/
-AxolutlyMobile/
-HTML/
-Java/
-Lua/
-Python/
-Quitar\ Fondo/
-bot.log
-build/
-config/
-config_paths.json
-data/
-download_history.txt
-extractores_yt-dlp.txt
-ffmpeg-7.1-full_build/
-flutter/
-realesrgan-ncnn-vulkan.rar
-spotify_downloader.log
-u2net.onnx
