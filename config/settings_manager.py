@@ -1,8 +1,4 @@
-import json
-import os
-import logging
-import shutil
-
+import json, os, shutil, logging
 class SettingsManager:
     _instance = None
     DEFAULT_SETTINGS = {

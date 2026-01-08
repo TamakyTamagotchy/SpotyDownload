@@ -2,13 +2,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                             QMessageBox, QLineEdit, QGroupBox, QInputDialog)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
-import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import os
-import logging
-import webbrowser
-import json
-import time
+import os, logging, webbrowser, json, time, spotipy
 
 # Constantes
 CONFIG_FILE = "config/spotify_settings.json"

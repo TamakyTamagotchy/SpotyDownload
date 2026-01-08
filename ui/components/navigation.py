@@ -2,10 +2,9 @@
 Barra de navegación lateral moderna con iconos y animaciones.
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QFrame, QSizePolicy)
-from PyQt6.QtCore import (Qt, QPropertyAnimation, QEasingCurve, QSize, 
-                          pyqtSignal, QTimer)
-from PyQt6.QtGui import QFont, QColor, QCursor, QPainter, QBrush, QPen
+                             QPushButton, QFrame)
+from PyQt6.QtCore import (Qt, pyqtSignal)
+from PyQt6.QtGui import QFont, QCursor
 
 
 class NavItem(QPushButton):

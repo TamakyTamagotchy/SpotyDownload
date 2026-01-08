@@ -5,11 +5,12 @@ Sin efectos de opacidad para evitar errores de QPainter.
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QFrame, QScrollArea)
 from PyQt6.QtCore import (Qt, QPropertyAnimation, QEasingCurve, 
-                          QPoint, pyqtSignal)
+                          QPoint, QRect, pyqtSignal)
 from PyQt6.QtGui import QFont, QCursor
+from .animations import AnimationMixin, GeometryAnimator
 
 
-class Drawer(QFrame):
+class Drawer(QFrame, AnimationMixin):
     """Panel lateral deslizable."""
     
     opened = pyqtSignal()
@@ -23,6 +24,7 @@ class Drawer(QFrame):
         self._position = position
         self._drawer_width = width
         self._is_open = False
+        self._use_geometry_anim = True  # Usar animaciones con QRect
         
         self.setup_style()
         self.setup_ui()
@@ -143,6 +145,7 @@ class Drawer(QFrame):
         
         self._is_open = True
         parent = self.parent()
+        parent_height = parent.height()
         
         if self._position == self.RIGHT:
             start_x = parent.width()
@@ -151,10 +154,8 @@ class Drawer(QFrame):
             start_x = -self._drawer_width
             end_x = 0
         
-        self.setGeometry(start_x, 0, self._drawer_width, parent.height())
-        
         # Mostrar overlay
-        self.overlay.setGeometry(0, 0, parent.width(), parent.height())
+        self.overlay.setGeometry(0, 0, parent.width(), parent_height)
         self.overlay.show()
         self.overlay.raise_()
         
@@ -162,14 +163,25 @@ class Drawer(QFrame):
         self.show()
         self.raise_()
         
-        # Animación de deslizamiento
-        self.slide_anim = QPropertyAnimation(self, b"pos")
-        self.slide_anim.setDuration(300)
-        self.slide_anim.setStartValue(QPoint(start_x, 0))
-        self.slide_anim.setEndValue(QPoint(end_x, 0))
-        self.slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.slide_anim.finished.connect(self.opened.emit)
-        self.slide_anim.start()
+        if self._use_geometry_anim:
+            # Animación usando QRect (slide_and_resize)
+            start_rect = QRect(start_x, 0, self._drawer_width, parent_height)
+            end_rect = QRect(end_x, 0, self._drawer_width, parent_height)
+            
+            self.setGeometry(start_rect)
+            self.geometry_anim = GeometryAnimator.slide_and_resize(self, end_rect, 300)
+            self.geometry_anim.finished.connect(self.opened.emit)
+            self.geometry_anim.start()
+        else:
+            # Animación de deslizamiento clásica
+            self.setGeometry(start_x, 0, self._drawer_width, parent_height)
+            self.slide_anim = QPropertyAnimation(self, b"pos")
+            self.slide_anim.setDuration(300)
+            self.slide_anim.setStartValue(QPoint(start_x, 0))
+            self.slide_anim.setEndValue(QPoint(end_x, 0))
+            self.slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self.slide_anim.finished.connect(self.opened.emit)
+            self.slide_anim.start()
     
     def close_drawer(self):
         if not self._is_open:
@@ -177,20 +189,28 @@ class Drawer(QFrame):
         
         self._is_open = False
         parent = self.parent()
+        parent_height = parent.height()
         
         if self._position == self.RIGHT:
             end_x = parent.width()
         else:
             end_x = -self._drawer_width
         
-        # Animación de deslizamiento
-        self.slide_anim = QPropertyAnimation(self, b"pos")
-        self.slide_anim.setDuration(250)
-        self.slide_anim.setStartValue(self.pos())
-        self.slide_anim.setEndValue(QPoint(end_x, 0))
-        self.slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.slide_anim.finished.connect(self._on_close_finished)
-        self.slide_anim.start()
+        if self._use_geometry_anim:
+            # Animación usando QRect
+            end_rect = QRect(end_x, 0, self._drawer_width, parent_height)
+            self.geometry_anim = GeometryAnimator.slide_and_resize(self, end_rect, 250)
+            self.geometry_anim.finished.connect(self._on_close_finished)
+            self.geometry_anim.start()
+        else:
+            # Animación de deslizamiento clásica
+            self.slide_anim = QPropertyAnimation(self, b"pos")
+            self.slide_anim.setDuration(250)
+            self.slide_anim.setStartValue(self.pos())
+            self.slide_anim.setEndValue(QPoint(end_x, 0))
+            self.slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+            self.slide_anim.finished.connect(self._on_close_finished)
+            self.slide_anim.start()
     
     def _on_close_finished(self):
         self.hide()
@@ -207,7 +227,7 @@ class Drawer(QFrame):
         return self._is_open
 
 
-class BottomSheet(QFrame):
+class BottomSheet(QFrame, AnimationMixin):
     """Panel inferior deslizable."""
     
     opened = pyqtSignal()
@@ -217,6 +237,7 @@ class BottomSheet(QFrame):
         super().__init__(parent)
         self._sheet_height = height
         self._is_open = False
+        self._use_geometry_anim = True  # Usar animaciones con QRect
         
         self.setup_style()
         self.setup_ui()
@@ -300,26 +321,38 @@ class BottomSheet(QFrame):
         
         self._is_open = True
         parent = self.parent()
+        parent_width = parent.width()
+        parent_height = parent.height()
         
-        start_y = parent.height()
-        end_y = parent.height() - self._sheet_height
+        start_y = parent_height
+        end_y = parent_height - self._sheet_height
         
-        self.setGeometry(0, start_y, parent.width(), self._sheet_height)
-        
-        self.overlay.setGeometry(0, 0, parent.width(), parent.height())
+        self.overlay.setGeometry(0, 0, parent_width, parent_height)
         self.overlay.show()
         self.overlay.raise_()
         
         self.show()
         self.raise_()
         
-        self.slide_anim = QPropertyAnimation(self, b"pos")
-        self.slide_anim.setDuration(300)
-        self.slide_anim.setStartValue(QPoint(0, start_y))
-        self.slide_anim.setEndValue(QPoint(0, end_y))
-        self.slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.slide_anim.finished.connect(self.opened.emit)
-        self.slide_anim.start()
+        if self._use_geometry_anim:
+            # Animación usando QRect con morph suave
+            start_rect = QRect(0, start_y, parent_width, self._sheet_height)
+            end_rect = QRect(0, end_y, parent_width, self._sheet_height)
+            
+            self.setGeometry(start_rect)
+            self.geometry_anim = GeometryAnimator.morph_to(self, end_rect, 350)
+            self.geometry_anim.finished.connect(self.opened.emit)
+            self.geometry_anim.start()
+        else:
+            # Animación clásica
+            self.setGeometry(0, start_y, parent_width, self._sheet_height)
+            self.slide_anim = QPropertyAnimation(self, b"pos")
+            self.slide_anim.setDuration(300)
+            self.slide_anim.setStartValue(QPoint(0, start_y))
+            self.slide_anim.setEndValue(QPoint(0, end_y))
+            self.slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self.slide_anim.finished.connect(self.opened.emit)
+            self.slide_anim.start()
     
     def close_sheet(self):
         if not self._is_open:
@@ -327,15 +360,24 @@ class BottomSheet(QFrame):
         
         self._is_open = False
         parent = self.parent()
+        parent_width = parent.width()
         end_y = parent.height()
         
-        self.slide_anim = QPropertyAnimation(self, b"pos")
-        self.slide_anim.setDuration(250)
-        self.slide_anim.setStartValue(self.pos())
-        self.slide_anim.setEndValue(QPoint(0, end_y))
-        self.slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.slide_anim.finished.connect(self._on_close_finished)
-        self.slide_anim.start()
+        if self._use_geometry_anim:
+            # Animación usando QRect
+            end_rect = QRect(0, end_y, parent_width, self._sheet_height)
+            self.geometry_anim = GeometryAnimator.morph_to(self, end_rect, 250)
+            self.geometry_anim.finished.connect(self._on_close_finished)
+            self.geometry_anim.start()
+        else:
+            # Animación clásica
+            self.slide_anim = QPropertyAnimation(self, b"pos")
+            self.slide_anim.setDuration(250)
+            self.slide_anim.setStartValue(self.pos())
+            self.slide_anim.setEndValue(QPoint(0, end_y))
+            self.slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+            self.slide_anim.finished.connect(self._on_close_finished)
+            self.slide_anim.start()
     
     def _on_close_finished(self):
         self.hide()

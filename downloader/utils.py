@@ -1,12 +1,6 @@
-import os
-import logging
-import re
-import time
-import requests
+import os, logging, re, time, requests, eyed3, yt_dlp
 from PIL import Image
 from io import BytesIO
-import eyed3
-import yt_dlp
 from .search import search_song
 from config.settings_manager import SettingsManager
 
@@ -234,9 +228,18 @@ def search_music_services(title, artist, album=None):
     url = search_song(title, artist, album)
     return url
 
-def download_song(url, filename, q, pause_event, cancel_event, max_retries=3):
+def download_song(url, filename, q, pause_event, cancel_event, max_retries=3, output_format="mp3"):
     """
-    Descarga una canción de YouTube Music o similar y la convierte a MP3 si es necesario.
+    Descarga una canción de YouTube Music o similar y la convierte al formato especificado.
+    
+    Args:
+        url: URL del video/audio
+        filename: Ruta del archivo de salida (sin extensión o con extensión)
+        q: Cola para reportar progreso
+        pause_event: Evento para pausar
+        cancel_event: Evento para cancelar
+        max_retries: Intentos máximos
+        output_format: Formato de salida ('mp3' o 'flac')
     """
     import glob
     import subprocess
@@ -244,7 +247,13 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3):
     base, _ = os.path.splitext(filename)
     outtmpl = base + '.%(ext)s'
     ffmpeg_path = SettingsManager().get_ffmpeg_path()
-    mp3_file = base + '.mp3'
+    
+    # Determinar extensión y archivo de salida según formato
+    if output_format.lower() == 'flac':
+        output_file = base + '.flac'
+    else:
+        output_file = base + '.mp3'
+    
     download_dir = os.path.dirname(base)
     base_name = os.path.basename(base)
 
@@ -311,8 +320,8 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3):
                             logging.error(f"No se encontró el archivo descargado. Base esperada: {base}")
                             raise Exception("El archivo descargado no se encontró")
                         
-                        # Convertir a MP3 de alta calidad si es necesario
-                        if not downloaded_file.endswith('.mp3'):
+                        # Convertir al formato de salida especificado
+                        if not downloaded_file.endswith(f'.{output_format.lower()}'):
                             # Determinar la ruta de ffmpeg
                             ffmpeg_exe = None
                             
@@ -349,24 +358,37 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3):
                             
                             logging.info(f"Usando FFmpeg: {ffmpeg_exe}")
                             
-                            cmd = [
-                                ffmpeg_exe,
-                                '-y',
-                                '-i', downloaded_file,
-                                '-codec:a', 'libmp3lame',
-                                '-b:a', '320k',
-                                mp3_file
-                            ]
-                            logging.info(f"Convirtiendo a MP3: {downloaded_file} -> {mp3_file}")
+                            # Construir comando según formato de salida
+                            if output_format.lower() == 'flac':
+                                cmd = [
+                                    ffmpeg_exe,
+                                    '-y',
+                                    '-i', downloaded_file,
+                                    '-codec:a', 'flac',
+                                    '-compression_level', '8',  # Máxima compresión sin pérdida
+                                    output_file
+                                ]
+                                logging.info(f"Convirtiendo a FLAC: {downloaded_file} -> {output_file}")
+                            else:
+                                cmd = [
+                                    ffmpeg_exe,
+                                    '-y',
+                                    '-i', downloaded_file,
+                                    '-codec:a', 'libmp3lame',
+                                    '-b:a', '320k',
+                                    output_file
+                                ]
+                                logging.info(f"Convirtiendo a MP3: {downloaded_file} -> {output_file}")
+                            
                             result = subprocess.run(cmd, capture_output=True, text=True)
                             
                             if result.returncode != 0:
                                 logging.error(f"Error de FFmpeg: {result.stderr}")
-                                raise Exception(f"Error convirtiendo a MP3: {result.stderr}")
+                                raise Exception(f"Error convirtiendo a {output_format.upper()}: {result.stderr}")
                             
-                            # Verificar que se creó el MP3
-                            if os.path.exists(mp3_file):
-                                logging.info(f"MP3 creado exitosamente: {mp3_file}")
+                            # Verificar que se creó el archivo
+                            if os.path.exists(output_file):
+                                logging.info(f"{output_format.upper()} creado exitosamente: {output_file}")
                                 # Eliminar archivo original después de convertir
                                 try:
                                     os.remove(downloaded_file)
@@ -374,10 +396,10 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3):
                                 except Exception as e:
                                     logging.warning(f"No se pudo eliminar archivo original: {e}")
                             else:
-                                raise Exception("El archivo MP3 no se creó")
-                        elif downloaded_file != mp3_file:
-                            # Ya es mp3, solo renombrar si es necesario
-                            os.rename(downloaded_file, mp3_file)
+                                raise Exception(f"El archivo {output_format.upper()} no se creó")
+                        elif downloaded_file != output_file:
+                            # Ya está en el formato correcto, solo renombrar si es necesario
+                            os.rename(downloaded_file, output_file)
                         
                         return
         except yt_dlp.utils.DownloadError as e:

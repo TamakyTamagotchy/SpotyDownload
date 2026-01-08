@@ -1,11 +1,8 @@
-from PyQt6.QtWidgets import (QMainWindow, QFileDialog, QMessageBox, QWidget, 
+from PyQt6.QtWidgets import (QMainWindow, QMessageBox, QWidget, 
                              QHBoxLayout, QVBoxLayout, QStackedWidget, QLabel, 
-                             QLineEdit, QTableWidget, QHeaderView, QTableWidgetItem,
-                             QApplication, QProgressBar, QFrame)
-from PyQt6.QtGui import QIcon, QFont
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint
-import logging
-import os
+                            QTableWidget, QHeaderView, QTableWidgetItem)
+from PyQt6.QtGui import QFont
+import logging, os
 from downloader.utils import extract_id, load_download_history, save_download_history
 from downloader.spotify import get_spotify_item
 from ui.spotify_page import SpotifyPage

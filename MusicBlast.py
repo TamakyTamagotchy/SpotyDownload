@@ -1,7 +1,6 @@
 from PyQt6.QtWidgets import QApplication
 from ui.main_window import ModernApp
-import sys
-import logging
+import sys, logging
 
 def setup_logging():
     logging.basicConfig(

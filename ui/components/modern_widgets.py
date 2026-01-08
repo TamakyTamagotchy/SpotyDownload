@@ -4,12 +4,13 @@ Cards, botones, inputs, etc.
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QLineEdit, QFrame,
-                             QSizePolicy, QProgressBar)
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont, QColor, QIcon, QCursor
+                            QProgressBar)
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRect
+from PyQt6.QtGui import QFont, QIcon, QCursor
+from .animations import AnimationMixin, GeometryAnimator
 
 
-class Card(QFrame):
+class Card(QFrame, AnimationMixin):
     """Card contenedor con sombra y bordes redondeados."""
     
     clicked = pyqtSignal()
@@ -66,11 +67,12 @@ class Card(QFrame):
     
     def mousePressEvent(self, event):
         if self._clickable:
+            self.pulse_effect()  # Feedback visual al hacer clic
             self.clicked.emit()
         super().mousePressEvent(event)
 
 
-class ModernButton(QPushButton):
+class ModernButton(QPushButton, AnimationMixin):
     """Botón moderno con variantes de estilo."""
     
     PRIMARY = "primary"
@@ -78,9 +80,10 @@ class ModernButton(QPushButton):
     DANGER = "danger"
     GHOST = "ghost"
     
-    def __init__(self, text, variant=PRIMARY, icon=None, parent=None):
+    def __init__(self, text, variant=PRIMARY, icon=None, parent=None, animated=True):
         super().__init__(text, parent)
         self._variant = variant
+        self._animated = animated
         
         self.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -91,6 +94,14 @@ class ModernButton(QPushButton):
             self.setIconSize(QSize(18, 18))
         
         self.apply_style()
+        
+        # Conectar animación al click si está habilitada
+        if animated:
+            self.clicked.connect(self._on_click_animation)
+    
+    def _on_click_animation(self):
+        """Efecto de pulso al hacer clic."""
+        self.pulse_effect(scale=1.05, duration=150)
     
     def apply_style(self):
         styles = {
@@ -163,11 +174,12 @@ class ModernButton(QPushButton):
         self.setStyleSheet(styles.get(self._variant, styles["primary"]))
 
 
-class ModernInput(QLineEdit):
+class ModernInput(QLineEdit, AnimationMixin):
     """Input moderno con placeholder animado y validación visual."""
     
     def __init__(self, placeholder="", parent=None):
         super().__init__(parent)
+        self._original_geometry = None
         
         self.setPlaceholderText(placeholder)
         self.setFont(QFont("Segoe UI", 11))
@@ -194,10 +206,12 @@ class ModernInput(QLineEdit):
             }
         """)
     
-    def set_error(self, has_error=True):
-        """Mostrar estado de error visual."""
+    def set_error(self, has_error=True, animate=True):
+        """Mostrar estado de error visual con animación opcional."""
         if has_error:
             self.setStyleSheet(self.styleSheet().replace("#3A3A3A", "#E53935").replace("#1DB954", "#E53935"))
+            if animate:
+                self.shake_effect(intensity=5, duration=300)  # Sacudida para indicar error
         else:
             self.setStyleSheet(self.styleSheet().replace("#E53935", "#3A3A3A"))
 

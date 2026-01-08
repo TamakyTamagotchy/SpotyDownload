@@ -1,7 +1,7 @@
-from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
+from PyQt6.QtWidgets import (QHBoxLayout, QVBoxLayout, QLabel, 
                              QProgressBar, QPushButton, QFrame)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont, QColor, QCursor
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QCursor
 
 
 class QueueItemWidget(QFrame):

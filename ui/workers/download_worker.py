@@ -1,10 +1,6 @@
 from PyQt6.QtCore import pyqtSignal, QObject, QThread
-import os
-import queue
-import threading
-import logging
+import os, queue, threading, logging
 from downloader.utils import sanitize_filename, search_music_services, download_song, save_download_history, load_download_history, update_mp3_metadata_hybrid
-from downloader.metadata import update_mp3_metadata
 from downloader.spotify import get_spotify_item
 
 class DownloadWorker(QObject):
@@ -104,9 +100,13 @@ class DownloadWorker(QObject):
             self.download_started.emit(song_metadata['song'])
             self.status_changed.emit(f"Buscando: {song_metadata['song']}")
             
+            # Determinar formato de salida según calidad
+            output_format = 'flac' if 'FLAC' in self.quality else 'mp3'
+            file_ext = '.flac' if output_format == 'flac' else '.mp3'
+            
             filename = os.path.join(
                 self.download_folder, 
-                f'{sanitize_filename(song_metadata["song"])}.mp3'
+                f'{sanitize_filename(song_metadata["song"])}{file_ext}'
             )
             if os.path.exists(filename):
                 if not self.handle_existing_file(song_metadata['song'], filename):
@@ -120,7 +120,7 @@ class DownloadWorker(QObject):
                 self.progress.emit(int((track_index + 1) / total_tracks * 100))
                 return
             self.download_and_process_song(
-                url, filename, song_metadata, track_index, total_tracks
+                url, filename, song_metadata, track_index, total_tracks, output_format
             )
             # Guardar solo el enlace en el historial
             history_links = load_download_history()
@@ -153,56 +153,111 @@ class DownloadWorker(QObject):
         )
         return url
 
-    def download_and_process_song(self, url, filename, song_metadata, track_index, total_tracks):
+    def download_and_process_song(self, url, filename, song_metadata, track_index, total_tracks, output_format='mp3'):
         try:
             download_song(
                 url, filename, self.q, 
-                self.pause_event, self.cancel_event
+                self.pause_event, self.cancel_event,
+                output_format=output_format
             )
             
             # Emitir señal de conversión
             self.converting.emit()
             self.status_changed.emit(f"Convirtiendo: {song_metadata['song']}")
             
-            # Asegurar que el nombre de archivo sea el MP3 generado
+            # Determinar la extensión según el formato
             base, _ = os.path.splitext(filename)
-            mp3_file = base + '.mp3'
-            # Esperar a que el archivo MP3 exista y sea válido antes de poner el cover
+            output_file = base + ('.flac' if output_format == 'flac' else '.mp3')
+            
+            # Esperar a que el archivo exista
             import time
             max_wait = 5  # segundos
             waited = 0
-            while not os.path.exists(mp3_file) and waited < max_wait:
+            while not os.path.exists(output_file) and waited < max_wait:
                 time.sleep(0.2)
                 waited += 0.2
-            if os.path.exists(mp3_file):
-                # Emitir señal de metadatos
-                self.applying_metadata.emit()
-                self.status_changed.emit(f"Aplicando metadatos: {song_metadata['song']}")
-                
-                result = update_mp3_metadata_hybrid(
-                    mp3_file, 
-                    song_metadata['song'], 
-                    song_metadata['artists'], 
-                    song_metadata['album'], 
-                    song_metadata['cover_url'], 
-                    song_metadata['release_date'],
-                    song_metadata['genre']
-                )
-                if not result:
-                    logging.error(f'No se pudieron actualizar los metadatos para: {mp3_file}')
+            
+            if os.path.exists(output_file):
+                # Solo aplicar metadatos si es MP3 (FLAC usa metadatos diferentes)
+                if output_format == 'mp3':
+                    # Emitir señal de metadatos
+                    self.applying_metadata.emit()
+                    self.status_changed.emit(f"Aplicando metadatos: {song_metadata['song']}")
+                    
+                    result = update_mp3_metadata_hybrid(
+                        output_file, 
+                        song_metadata['song'], 
+                        song_metadata['artists'], 
+                        song_metadata['album'], 
+                        song_metadata['cover_url'], 
+                        song_metadata['release_date'],
+                        song_metadata['genre']
+                    )
+                    if not result:
+                        logging.error(f'No se pudieron actualizar los metadatos para: {output_file}')
+                else:
+                    # Para FLAC, aplicar metadatos con mutagen
+                    self.applying_metadata.emit()
+                    self.status_changed.emit(f"Aplicando metadatos FLAC: {song_metadata['song']}")
+                    self._apply_flac_metadata(output_file, song_metadata)
             else:
-                logging.error(f'Archivo MP3 no encontrado tras la conversión: {mp3_file}')
+                logging.error(f'Archivo no encontrado tras la conversión: {output_file}')
+            
             self.track_info.emit({
                 "spotify_id": self.spotify_id,
                 "title": song_metadata['song'],
                 "artist": song_metadata['artists'],
                 "album": song_metadata['album'],
                 "cover_url": song_metadata['cover_url'],
-                "file_path": mp3_file,
+                "file_path": output_file,
                 "url": url,
                 "release_date": song_metadata['release_date'],
                 "quality": self.quality
             })
+        except Exception as e:
+            logging.error(f'Error al descargar "{song_metadata["song"]}": {e}')
+            self.error.emit(f'Error al descargar "{song_metadata["song"]}": {str(e)}')
+        self.progress.emit(int((track_index + 1) / total_tracks * 100))
+    
+    def _apply_flac_metadata(self, filepath, song_metadata):
+        """Aplicar metadatos a archivo FLAC usando mutagen"""
+        try:
+            from mutagen.flac import FLAC, Picture
+            import requests
+            
+            audio = FLAC(filepath)
+            
+            # Metadatos básicos
+            audio['TITLE'] = song_metadata['song']
+            audio['ARTIST'] = song_metadata['artists']
+            audio['ALBUM'] = song_metadata['album']
+            audio['GENRE'] = song_metadata.get('genre', '')
+            
+            # Año
+            if song_metadata.get('release_date'):
+                year = song_metadata['release_date'][:4]
+                audio['DATE'] = year
+            
+            # Portada
+            if song_metadata.get('cover_url'):
+                try:
+                    response = requests.get(song_metadata['cover_url'], timeout=10)
+                    if response.status_code == 200:
+                        picture = Picture()
+                        picture.type = 3  # Front cover
+                        picture.mime = 'image/jpeg'
+                        picture.desc = 'Cover'
+                        picture.data = response.content
+                        audio.add_picture(picture)
+                except Exception as e:
+                    logging.warning(f'No se pudo añadir portada FLAC: {e}')
+            
+            audio.save()
+            logging.info(f'Metadatos FLAC aplicados: {filepath}')
+        except ImportError:
+            logging.warning('mutagen no disponible para metadatos FLAC')
+        except Exception as e:
+            logging.error(f'Error aplicando metadatos FLAC: {e}')
         except Exception as e:
             logging.error(f'Error al descargar "{song_metadata["song"]}": {e}')
             self.error.emit(f'Error al descargar "{song_metadata["song"]}": {str(e)}')

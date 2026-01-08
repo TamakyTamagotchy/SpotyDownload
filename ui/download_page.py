@@ -1,9 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QListWidget, QListWidgetItem, QScrollArea,
-                             QFrame, QSizePolicy)
+                            QListWidget, QListWidgetItem, QFrame)
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt, QSize
-import logging
 from downloader.utils import extract_id
 from core.download_manager import DownloadManager
 from ui.components.queue_item import QueueItemWidget

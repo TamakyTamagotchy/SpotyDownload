@@ -1,8 +1,5 @@
 from PyQt6.QtCore import QThread, pyqtSignal
-import logging
-import os
-import queue
-import threading
+import logging, os, queue, threading
 from downloader.utils import search_music_services, download_song, sanitize_filename
 from downloader.metadata import update_mp3_metadata
 
@@ -54,10 +51,14 @@ class SpotifyDownloadWorker(QThread):
             if not url:
                 raise Exception(f"No se encontró la canción: {title} - {artists}")
             
-            # Crear nombre de archivo
+            # Determinar formato según calidad
+            output_format = 'flac' if 'FLAC' in self.quality else 'mp3'
+            file_ext = '.flac' if output_format == 'flac' else '.mp3'
+            
+            # Crear nombre de archivo (solo título, sin artistas)
             filename = os.path.join(
                 self.download_folder,
-                f"{sanitize_filename(title, artists)}.mp3"
+                f"{sanitize_filename(title)}{file_ext}"
             )
             
             # Verificar si el archivo ya existe
@@ -89,7 +90,7 @@ class SpotifyDownloadWorker(QThread):
                         pass
             
             # Descargar usando la función existente
-            download_song(url, filename, q, pause_event, cancel_event)
+            download_song(url, filename, q, pause_event, cancel_event, output_format=output_format)
             
             # Emitir señal de conversión
             self.converting.emit()
@@ -100,15 +101,19 @@ class SpotifyDownloadWorker(QThread):
                 self.applying_metadata.emit()
                 self.status_changed.emit(f"Aplicando metadatos: {title}")
                 
-                update_mp3_metadata(
-                    filename,
-                    title,
-                    artists,
-                    album,
-                    song.get('cover_url', ''),
-                    song.get('release_date', ''),
-                    song.get('genre', '')
-                )
+                if output_format == 'mp3':
+                    update_mp3_metadata(
+                        filename,
+                        title,
+                        artists,
+                        album,
+                        song.get('cover_url', ''),
+                        song.get('release_date', ''),
+                        song.get('genre', '')
+                    )
+                else:
+                    # Metadatos FLAC
+                    self._apply_flac_metadata(filename, song)
                 
                 # Emitir señal de completado
                 self.track_completed.emit({
@@ -126,6 +131,38 @@ class SpotifyDownloadWorker(QThread):
         except Exception as e:
             logging.error(f"Error descargando canción: {e}")
             self.error_occurred.emit(str(e))
+    
+    def _apply_flac_metadata(self, filepath, song):
+        """Aplicar metadatos a archivo FLAC"""
+        try:
+            from mutagen.flac import FLAC, Picture
+            import requests
+            
+            audio = FLAC(filepath)
+            audio['TITLE'] = song['song']
+            audio['ARTIST'] = song['artists']
+            audio['ALBUM'] = song.get('album', '')
+            audio['GENRE'] = song.get('genre', '')
+            
+            if song.get('release_date'):
+                audio['DATE'] = song['release_date'][:4]
+            
+            if song.get('cover_url'):
+                try:
+                    response = requests.get(song['cover_url'], timeout=10)
+                    if response.status_code == 200:
+                        picture = Picture()
+                        picture.type = 3
+                        picture.mime = 'image/jpeg'
+                        picture.desc = 'Cover'
+                        picture.data = response.content
+                        audio.add_picture(picture)
+                except:
+                    pass
+            
+            audio.save()
+        except Exception as e:
+            logging.warning(f'Error metadatos FLAC: {e}')
 
     def cancel(self):
         """Cancelar descarga"""
@@ -195,10 +232,14 @@ class SpotifyPlaylistDownloadWorker(QThread):
             if not url:
                 raise Exception(f"No se encontró: {title}")
             
-            # Crear nombre de archivo
+            # Determinar formato según calidad
+            output_format = 'flac' if 'FLAC' in self.quality else 'mp3'
+            file_ext = '.flac' if output_format == 'flac' else '.mp3'
+            
+            # Crear nombre de archivo (solo título, sin artistas)
             filename = os.path.join(
                 self.download_folder,
-                f"{sanitize_filename(title, artists)}.mp3"
+                f"{sanitize_filename(title)}{file_ext}"
             )
             
             # Verificar si el archivo ya existe
@@ -225,19 +266,22 @@ class SpotifyPlaylistDownloadWorker(QThread):
                 cancel_event.set()
             
             # Descargar usando la función existente
-            download_song(url, filename, q, pause_event, cancel_event)
+            download_song(url, filename, q, pause_event, cancel_event, output_format=output_format)
             
             # Actualizar metadatos si la descarga fue exitosa
             if os.path.exists(filename) and not self.cancel_requested:
-                update_mp3_metadata(
-                    filename,
-                    title,
-                    artists,
-                    album,
-                    song.get('cover_url', ''),
-                    song.get('release_date', ''),
-                    song.get('genre', '')
-                )
+                if output_format == 'mp3':
+                    update_mp3_metadata(
+                        filename,
+                        title,
+                        artists,
+                        album,
+                        song.get('cover_url', ''),
+                        song.get('release_date', ''),
+                        song.get('genre', '')
+                    )
+                else:
+                    self._apply_flac_metadata(filename, song)
                 
                 logging.info(f"Descargada: {title} ({current}/{total})")
             elif self.cancel_requested:
@@ -258,3 +302,35 @@ class SpotifyPlaylistDownloadWorker(QThread):
     def cancel(self):
         """Cancelar descarga"""
         self.cancel_requested = True
+    
+    def _apply_flac_metadata(self, filepath, song):
+        """Aplicar metadatos a archivo FLAC"""
+        try:
+            from mutagen.flac import FLAC, Picture
+            import requests
+            
+            audio = FLAC(filepath)
+            audio['TITLE'] = song['song']
+            audio['ARTIST'] = song['artists']
+            audio['ALBUM'] = song.get('album', '')
+            audio['GENRE'] = song.get('genre', '')
+            
+            if song.get('release_date'):
+                audio['DATE'] = song['release_date'][:4]
+            
+            if song.get('cover_url'):
+                try:
+                    response = requests.get(song['cover_url'], timeout=10)
+                    if response.status_code == 200:
+                        picture = Picture()
+                        picture.type = 3
+                        picture.mime = 'image/jpeg'
+                        picture.desc = 'Cover'
+                        picture.data = response.content
+                        audio.add_picture(picture)
+                except:
+                    pass
+            
+            audio.save()
+        except Exception as e:
+            logging.warning(f'Error metadatos FLAC: {e}')

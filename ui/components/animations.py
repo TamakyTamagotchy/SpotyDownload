@@ -1,108 +1,236 @@
 """
-Sistema de animaciones para la interfaz.
-Solo animaciones de posición y tamaño (sin opacidad para evitar errores QPainter).
+Sistema de animaciones para la interfaz basado en QRect.
+Animaciones de geometría (posición + tamaño) sin opacidad para evitar errores QPainter.
 """
-from PyQt6.QtCore import QPropertyAnimation, QEasingCurve, QPoint, QSize, QRect
+from PyQt6.QtCore import (QPropertyAnimation, QEasingCurve, QPoint, QSize, 
+                          QRect, QSequentialAnimationGroup)
+
+
+class GeometryAnimator:
+    """Clase para animaciones basadas en QRect (geometría completa)."""
+    
+    @staticmethod
+    def expand_from_center(widget, target_rect: QRect, duration=300):
+        """
+        Expandir widget desde el centro hacia un tamaño objetivo.
+        Útil para modales, popups y cards que aparecen.
+        """
+        center = target_rect.center()
+        start_rect = QRect(center.x(), center.y(), 0, 0)
+        
+        anim = QPropertyAnimation(widget, b"geometry")
+        anim.setDuration(duration)
+        anim.setStartValue(start_rect)
+        anim.setEndValue(target_rect)
+        anim.setEasingCurve(QEasingCurve.Type.OutBack)
+        return anim
+    
+    @staticmethod
+    def collapse_to_center(widget, duration=250, on_finished=None):
+        """
+        Colapsar widget hacia su centro.
+        Útil para cerrar modales/popups.
+        """
+        current_rect = widget.geometry()
+        center = current_rect.center()
+        end_rect = QRect(center.x(), center.y(), 0, 0)
+        
+        anim = QPropertyAnimation(widget, b"geometry")
+        anim.setDuration(duration)
+        anim.setStartValue(current_rect)
+        anim.setEndValue(end_rect)
+        anim.setEasingCurve(QEasingCurve.Type.InBack)
+        
+        if on_finished:
+            anim.finished.connect(on_finished)
+        return anim
+    
+    @staticmethod
+    def morph_to(widget, target_rect: QRect, duration=350):
+        """
+        Transformar suavemente la geometría del widget.
+        Útil para redimensionar paneles, cambiar layouts.
+        """
+        anim = QPropertyAnimation(widget, b"geometry")
+        anim.setDuration(duration)
+        anim.setStartValue(widget.geometry())
+        anim.setEndValue(target_rect)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        return anim
+    
+    @staticmethod
+    def pulse(widget, scale_factor=1.1, duration=200):
+        """
+        Efecto de pulso: agranda y vuelve al tamaño original.
+        Útil para feedback visual en botones o notificaciones.
+        """
+        original_rect = widget.geometry()
+        center = original_rect.center()
+        
+        # Calcular rect expandido
+        new_width = int(original_rect.width() * scale_factor)
+        new_height = int(original_rect.height() * scale_factor)
+        expanded_rect = QRect(
+            center.x() - new_width // 2,
+            center.y() - new_height // 2,
+            new_width,
+            new_height
+        )
+        
+        # Animación secuencial: expandir y contraer
+        group = QSequentialAnimationGroup(widget)
+        
+        expand = QPropertyAnimation(widget, b"geometry")
+        expand.setDuration(duration // 2)
+        expand.setStartValue(original_rect)
+        expand.setEndValue(expanded_rect)
+        expand.setEasingCurve(QEasingCurve.Type.OutQuad)
+        
+        contract = QPropertyAnimation(widget, b"geometry")
+        contract.setDuration(duration // 2)
+        contract.setStartValue(expanded_rect)
+        contract.setEndValue(original_rect)
+        contract.setEasingCurve(QEasingCurve.Type.InQuad)
+        
+        group.addAnimation(expand)
+        group.addAnimation(contract)
+        return group
+    
+    @staticmethod
+    def slide_and_resize(widget, target_rect: QRect, duration=400):
+        """
+        Deslizar y redimensionar simultáneamente.
+        Útil para paneles laterales que se expanden/contraen.
+        """
+        anim = QPropertyAnimation(widget, b"geometry")
+        anim.setDuration(duration)
+        anim.setStartValue(widget.geometry())
+        anim.setEndValue(target_rect)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        return anim
+    
+    @staticmethod
+    def shake(widget, intensity=5, duration=300):
+        """
+        Efecto de sacudida horizontal.
+        Útil para indicar error en formularios.
+        """
+        original_rect = widget.geometry()
+        
+        group = QSequentialAnimationGroup(widget)
+        
+        positions = [intensity, -intensity, intensity // 2, -intensity // 2, 0]
+        step_duration = duration // len(positions)
+        
+        for offset in positions:
+            anim = QPropertyAnimation(widget, b"geometry")
+            anim.setDuration(step_duration)
+            shake_rect = QRect(
+                original_rect.x() + offset,
+                original_rect.y(),
+                original_rect.width(),
+                original_rect.height()
+            )
+            anim.setEndValue(shake_rect)
+            anim.setEasingCurve(QEasingCurve.Type.Linear)
+            group.addAnimation(anim)
+        
+        return group
 
 
 class AnimationMixin:
-    """Mixin que provee métodos de animación para widgets."""
+    """Mixin que provee métodos de animación QRect para widgets."""
     
-    def slide_in(self, from_direction="right", duration=300):
-        """Animar entrada deslizando desde una dirección."""
-        if not hasattr(self, '_slide_anim'):
-            self._slide_anim = None
-            
-        current_pos = self.pos()
-        parent = self.parent()
+    def expand_from_point(self, point: QPoint = None, duration=300):
+        """Expandir widget desde un punto (útil para menús contextuales)."""
+        if not hasattr(self, '_expand_anim'):
+            self._expand_anim = None
         
-        if from_direction == "right":
-            start = QPoint(parent.width() if parent else 800, current_pos.y())
-        elif from_direction == "left":
-            start = QPoint(-self.width(), current_pos.y())
-        elif from_direction == "top":
-            start = QPoint(current_pos.x(), -self.height())
-        else:  # bottom
-            start = QPoint(current_pos.x(), parent.height() if parent else 600)
+        target_rect = self.geometry()
+        if point is None:
+            point = target_rect.center()
         
-        self.move(start)
+        start_rect = QRect(point.x(), point.y(), 0, 0)
+        self.setGeometry(start_rect)
         self.show()
         
-        self._slide_anim = QPropertyAnimation(self, b"pos")
-        self._slide_anim.setDuration(duration)
-        self._slide_anim.setStartValue(start)
-        self._slide_anim.setEndValue(current_pos)
-        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._slide_anim.start()
+        self._expand_anim = QPropertyAnimation(self, b"geometry")
+        self._expand_anim.setDuration(duration)
+        self._expand_anim.setStartValue(start_rect)
+        self._expand_anim.setEndValue(target_rect)
+        self._expand_anim.setEasingCurve(QEasingCurve.Type.OutBack)
+        self._expand_anim.start()
         
-        return self._slide_anim
+        return self._expand_anim
     
-    def slide_out(self, to_direction="right", duration=250, on_finished=None):
-        """Animar salida deslizando hacia una dirección."""
-        if not hasattr(self, '_slide_out_anim'):
-            self._slide_out_anim = None
-            
-        current_pos = self.pos()
-        parent = self.parent()
+    def collapse_to_point(self, point: QPoint = None, duration=250, on_finished=None):
+        """Colapsar widget hacia un punto."""
+        if not hasattr(self, '_collapse_anim'):
+            self._collapse_anim = None
         
-        if to_direction == "right":
-            end = QPoint(parent.width() if parent else 800, current_pos.y())
-        elif to_direction == "left":
-            end = QPoint(-self.width(), current_pos.y())
-        elif to_direction == "top":
-            end = QPoint(current_pos.x(), -self.height())
-        else:  # bottom
-            end = QPoint(current_pos.x(), parent.height() if parent else 600)
+        current_rect = self.geometry()
+        if point is None:
+            point = current_rect.center()
         
-        self._slide_out_anim = QPropertyAnimation(self, b"pos")
-        self._slide_out_anim.setDuration(duration)
-        self._slide_out_anim.setStartValue(current_pos)
-        self._slide_out_anim.setEndValue(end)
-        self._slide_out_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        end_rect = QRect(point.x(), point.y(), 0, 0)
+        
+        self._collapse_anim = QPropertyAnimation(self, b"geometry")
+        self._collapse_anim.setDuration(duration)
+        self._collapse_anim.setStartValue(current_rect)
+        self._collapse_anim.setEndValue(end_rect)
+        self._collapse_anim.setEasingCurve(QEasingCurve.Type.InBack)
         
         if on_finished:
-            self._slide_out_anim.finished.connect(on_finished)
+            self._collapse_anim.finished.connect(on_finished)
         
-        self._slide_out_anim.start()
-        
-        return self._slide_out_anim
+        self._collapse_anim.start()
+        return self._collapse_anim
     
-    def bounce(self, intensity=10, duration=400):
-        """Efecto de rebote."""
-        if not hasattr(self, '_bounce_anim'):
-            self._bounce_anim = None
-            
-        original_pos = self.pos()
+    def resize_animated(self, new_size: QSize, duration=300):
+        """Redimensionar widget con animación manteniendo posición."""
+        if not hasattr(self, '_resize_anim'):
+            self._resize_anim = None
         
-        self._bounce_anim = QPropertyAnimation(self, b"pos")
-        self._bounce_anim.setDuration(duration)
-        self._bounce_anim.setKeyValueAt(0, original_pos)
-        self._bounce_anim.setKeyValueAt(0.3, QPoint(original_pos.x(), original_pos.y() - intensity))
-        self._bounce_anim.setKeyValueAt(0.6, QPoint(original_pos.x(), original_pos.y() + intensity // 2))
-        self._bounce_anim.setKeyValueAt(1, original_pos)
-        self._bounce_anim.setEasingCurve(QEasingCurve.Type.OutBounce)
-        self._bounce_anim.start()
+        current_rect = self.geometry()
+        target_rect = QRect(current_rect.topLeft(), new_size)
         
-        return self._bounce_anim
-
-
-class PageTransition:
-    """Maneja transiciones entre páginas/widgets."""
+        self._resize_anim = QPropertyAnimation(self, b"geometry")
+        self._resize_anim.setDuration(duration)
+        self._resize_anim.setStartValue(current_rect)
+        self._resize_anim.setEndValue(target_rect)
+        self._resize_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._resize_anim.start()
+        
+        return self._resize_anim
     
-    @staticmethod
-    def slide_horizontal(stack_widget, new_index, direction="left", duration=300):
-        """Transición horizontal entre páginas de un QStackedWidget."""
-        current = stack_widget.currentWidget()
-        new_widget = stack_widget.widget(new_index)
+    def move_and_resize(self, target_rect: QRect, duration=350):
+        """Mover y redimensionar simultáneamente."""
+        if not hasattr(self, '_morph_anim'):
+            self._morph_anim = None
         
-        if current == new_widget:
-            return
+        self._morph_anim = QPropertyAnimation(self, b"geometry")
+        self._morph_anim.setDuration(duration)
+        self._morph_anim.setStartValue(self.geometry())
+        self._morph_anim.setEndValue(target_rect)
+        self._morph_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._morph_anim.start()
         
-        # Simplemente cambiar la página sin animación
-        stack_widget.setCurrentIndex(new_index)
+        return self._morph_anim
     
-    @staticmethod
-    def crossfade(stack_widget, new_index, duration=200):
-        """Transición de crossfade entre páginas."""
-        # Sin animación de opacidad para evitar errores QPainter
-        stack_widget.setCurrentIndex(new_index)
+    def pulse_effect(self, scale=1.08, duration=200):
+        """Efecto de pulso para feedback visual."""
+        if not hasattr(self, '_pulse_group'):
+            self._pulse_group = None
+        
+        self._pulse_group = GeometryAnimator.pulse(self, scale, duration)
+        self._pulse_group.start()
+        return self._pulse_group
+    
+    def shake_effect(self, intensity=6, duration=300):
+        """Efecto de sacudida para indicar error."""
+        if not hasattr(self, '_shake_group'):
+            self._shake_group = None
+        
+        self._shake_group = GeometryAnimator.shake(self, intensity, duration)
+        self._shake_group.start()
+        return self._shake_group

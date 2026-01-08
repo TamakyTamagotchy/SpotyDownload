@@ -1,9 +1,5 @@
-import spotipy
+import spotipy, os, re, logging, json
 from spotipy.oauth2 import SpotifyClientCredentials
-import logging
-import os
-import json
-import re
 
 # Obtener la ruta del directorio del script
 script_dir = os.path.dirname(os.path.abspath(__file__))

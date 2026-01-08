@@ -4,7 +4,7 @@ Aparece en la parte inferior de la ventana principal.
 """
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                              QProgressBar, QPushButton, QFrame)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, pyqtSignal
 from PyQt6.QtGui import QFont, QCursor, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PyQt6.QtCore import QUrl

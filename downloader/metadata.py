@@ -1,10 +1,6 @@
-import os
-import eyed3
-import requests
+import os, eyed3, requests, re, logging
 from PIL import Image
 from io import BytesIO
-import logging
-import re
 
 def update_mp3_metadata(filename, title, artist, album, cover_image_url, release_date, genre):
     try:

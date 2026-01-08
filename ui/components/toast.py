@@ -3,14 +3,15 @@ Sistema de notificaciones Toast/Popup para la interfaz.
 Notificaciones elegantes con animaciones de deslizamiento.
 Aparecen dentro de la ventana de la aplicación.
 """
-from PyQt6.QtWidgets import (QWidget, QLabel, QHBoxLayout, QPushButton, 
+from PyQt6.QtWidgets import (QLabel, QHBoxLayout, QPushButton, 
                              QApplication, QFrame)
 from PyQt6.QtCore import (Qt, QTimer, QPropertyAnimation, QEasingCurve, 
-                          QPoint, pyqtSignal)
+                          QPoint, QRect, pyqtSignal)
 from PyQt6.QtGui import QFont
+from .animations import AnimationMixin, GeometryAnimator
 
 
-class Toast(QFrame):
+class Toast(QFrame, AnimationMixin):
     """Notificación tipo toast que aparece dentro de la ventana padre."""
     
     closed = pyqtSignal()
@@ -112,8 +113,13 @@ class Toast(QFrame):
         
         self.adjustSize()
         
-    def show_toast(self, y_position=20):
-        """Mostrar el toast en la posición especificada dentro del padre."""
+    def show_toast(self, y_position=20, animate_expand=False):
+        """Mostrar el toast en la posición especificada dentro del padre.
+        
+        Args:
+            y_position: Posición Y desde arriba
+            animate_expand: Si es True, usa animación de expansión desde centro
+        """
         if not self._parent_window:
             return
             
@@ -122,42 +128,60 @@ class Toast(QFrame):
         self.adjustSize()
         
         x_final = parent_width - self.width() - 20
-        x_start = parent_width + 10  # Empezar fuera de la pantalla
         y = y_position
         
-        # Posicionar fuera de la pantalla inicialmente
-        self.move(x_start, y)
-        self.show()
-        self.raise_()
-        
-        # Animación de entrada (solo slide, sin opacidad)
-        self._slide_anim = QPropertyAnimation(self, b"pos")
-        self._slide_anim.setDuration(300)
-        self._slide_anim.setStartValue(QPoint(x_start, y))
-        self._slide_anim.setEndValue(QPoint(x_final, y))
-        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._slide_anim.start()
+        if animate_expand:
+            # Animación de expansión desde el centro (usando QRect)
+            target_rect = QRect(x_final, y, self.width(), self.height())
+            self.setGeometry(QRect(x_final + self.width() // 2, y + self.height() // 2, 0, 0))
+            self.show()
+            self.raise_()
+            
+            self._expand_anim = GeometryAnimator.expand_from_center(self, target_rect, 350)
+            self._expand_anim.start()
+        else:
+            # Animación de deslizamiento clásica
+            x_start = parent_width + 10
+            self.move(x_start, y)
+            self.show()
+            self.raise_()
+            
+            self._slide_anim = QPropertyAnimation(self, b"pos")
+            self._slide_anim.setDuration(300)
+            self._slide_anim.setStartValue(QPoint(x_start, y))
+            self._slide_anim.setEndValue(QPoint(x_final, y))
+            self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._slide_anim.start()
         
         # Timer para auto-cerrar
         if self.duration > 0:
             QTimer.singleShot(self.duration, self.hide_toast)
     
-    def hide_toast(self):
-        """Ocultar el toast con animación."""
+    def hide_toast(self, collapse=False):
+        """Ocultar el toast con animación.
+        
+        Args:
+            collapse: Si es True, usa animación de colapso hacia el centro
+        """
         if not self._parent_window or not self.isVisible():
             return
-            
-        parent_width = self._parent_window.width()
-        x_end = parent_width + 10
         
-        # Animación de salida
-        self._hide_anim = QPropertyAnimation(self, b"pos")
-        self._hide_anim.setDuration(250)
-        self._hide_anim.setStartValue(self.pos())
-        self._hide_anim.setEndValue(QPoint(x_end, self.pos().y()))
-        self._hide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self._hide_anim.finished.connect(self._on_hide_finished)
-        self._hide_anim.start()
+        if collapse:
+            # Animación de colapso hacia el centro (usando QRect)
+            self._collapse_anim = GeometryAnimator.collapse_to_center(self, 250, self._on_hide_finished)
+            self._collapse_anim.start()
+        else:
+            # Animación de deslizamiento clásica
+            parent_width = self._parent_window.width()
+            x_end = parent_width + 10
+            
+            self._hide_anim = QPropertyAnimation(self, b"pos")
+            self._hide_anim.setDuration(250)
+            self._hide_anim.setStartValue(self.pos())
+            self._hide_anim.setEndValue(QPoint(x_end, self.pos().y()))
+            self._hide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+            self._hide_anim.finished.connect(self._on_hide_finished)
+            self._hide_anim.start()
     
     def _on_hide_finished(self):
         self.closed.emit()

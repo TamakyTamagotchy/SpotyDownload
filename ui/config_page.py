@@ -1,10 +1,8 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QLineEdit, QPushButton, QComboBox, QCheckBox, 
+                             QLineEdit, QPushButton, QComboBox,
                              QFileDialog, QGroupBox, QScrollArea, QMessageBox)
-from PyQt6.QtGui import QIcon, QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from config.settings_manager import SettingsManager
-import os
 
 class ConfigPage(QWidget):
     def __init__(self, parent=None):
@@ -55,7 +53,7 @@ class ConfigPage(QWidget):
         # Calidad por defecto
         quality_layout = QHBoxLayout()
         self.quality_combo = QComboBox()
-        self.quality_combo.addItems(["Mejor", "Buena", "Baja"])
+        self.quality_combo.addItems(["FLAC (Sin pérdida)", "Mejor", "Buena", "Baja"])
         
         quality_layout.addWidget(QLabel("Calidad por defecto:"))
         quality_layout.addWidget(self.quality_combo)
