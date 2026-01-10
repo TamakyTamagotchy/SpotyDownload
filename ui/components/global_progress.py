@@ -4,13 +4,14 @@ Aparece en la parte inferior de la ventana principal.
 """
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                              QProgressBar, QPushButton, QFrame)
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, pyqtSignal
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QRect, pyqtSignal
 from PyQt6.QtGui import QFont, QCursor, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PyQt6.QtCore import QUrl
+from .animations import AnimationMixin, GeometryAnimator
 
 
-class GlobalProgressBar(QFrame):
+class GlobalProgressBar(QFrame, AnimationMixin):
     """Barra de progreso global que muestra el estado de descargas."""
     
     cancel_clicked = pyqtSignal()
@@ -20,10 +21,12 @@ class GlobalProgressBar(QFrame):
         self._is_visible = False
         self._current_task = None
         self._slide_anim = None
+        self._geometry_anim = None
         self._network_manager = QNetworkAccessManager(self)
         self._network_manager.finished.connect(self._on_cover_loaded)
         self._default_icon = "⬇️"
         self._has_cover = False
+        self._use_geometry_anim = True  # Usar animaciones con QRect
         
         self.setObjectName("globalProgress")
         self.setup_style()
@@ -125,7 +128,7 @@ class GlobalProgressBar(QFrame):
         layout.addWidget(cancel_btn)
     
     def show_progress(self, title="Descargando...", cover_url=None, animate=True):
-        """Mostrar la barra de progreso."""
+        """Mostrar la barra de progreso con animación usando GeometryAnimator."""
         if self._is_visible:
             # Si ya está visible, solo actualizar título y portada
             self.title_label.setText(title)
@@ -148,24 +151,31 @@ class GlobalProgressBar(QFrame):
         
         parent = self.parent()
         if parent:
-            # Posicionar en la parte inferior
-            self.setGeometry(0, parent.height(), parent.width(), 70)
+            bar_height = 70
+            start_rect = QRect(0, parent.height(), parent.width(), bar_height)
+            end_rect = QRect(0, parent.height() - bar_height, parent.width(), bar_height)
+            
+            self.setGeometry(start_rect)
             self.show()
             self.raise_()
             
-            if animate:
-                # Animar entrada
+            if animate and self._use_geometry_anim:
+                # Usar GeometryAnimator para animación con QRect
+                self._geometry_anim = GeometryAnimator.slide_and_resize(self, end_rect, 300)
+                self._geometry_anim.start()
+            elif animate:
+                # Animación de deslizamiento clásica
                 self._slide_anim = QPropertyAnimation(self, b"pos")
                 self._slide_anim.setDuration(300)
                 self._slide_anim.setStartValue(QPoint(0, parent.height()))
-                self._slide_anim.setEndValue(QPoint(0, parent.height() - 70))
+                self._slide_anim.setEndValue(QPoint(0, parent.height() - bar_height))
                 self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
                 self._slide_anim.start()
             else:
-                self.move(0, parent.height() - 70)
+                self.setGeometry(end_rect)
     
     def hide_progress(self, animate=True):
-        """Ocultar la barra de progreso."""
+        """Ocultar la barra de progreso con animación usando GeometryAnimator."""
         if not self._is_visible:
             return
             
@@ -173,13 +183,22 @@ class GlobalProgressBar(QFrame):
         parent = self.parent()
         
         if parent and animate:
-            self._slide_anim = QPropertyAnimation(self, b"pos")
-            self._slide_anim.setDuration(250)
-            self._slide_anim.setStartValue(self.pos())
-            self._slide_anim.setEndValue(QPoint(0, parent.height()))
-            self._slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-            self._slide_anim.finished.connect(self.hide)
-            self._slide_anim.start()
+            bar_height = 70
+            end_rect = QRect(0, parent.height(), parent.width(), bar_height)
+            
+            if self._use_geometry_anim:
+                # Usar GeometryAnimator para animación con QRect
+                self._geometry_anim = GeometryAnimator.slide_and_resize(self, end_rect, 250)
+                self._geometry_anim.finished.connect(self.hide)
+                self._geometry_anim.start()
+            else:
+                self._slide_anim = QPropertyAnimation(self, b"pos")
+                self._slide_anim.setDuration(250)
+                self._slide_anim.setStartValue(self.pos())
+                self._slide_anim.setEndValue(QPoint(0, parent.height()))
+                self._slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+                self._slide_anim.finished.connect(self.hide)
+                self._slide_anim.start()
         else:
             self.hide()
     

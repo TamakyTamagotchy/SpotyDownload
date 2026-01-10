@@ -70,6 +70,39 @@ class Card(QFrame, AnimationMixin):
             self.pulse_effect()  # Feedback visual al hacer clic
             self.clicked.emit()
         super().mousePressEvent(event)
+    
+    def show_animated(self, target_rect: QRect = None, duration=300):
+        """
+        Mostrar la card con animación de expansión desde el centro.
+        Usa GeometryAnimator para crear efecto de aparición suave.
+        """
+        if target_rect is None:
+            target_rect = self.geometry()
+        
+        self._show_anim = GeometryAnimator.expand_from_center(self, target_rect, duration)
+        self.show()
+        self._show_anim.start()
+        return self._show_anim
+    
+    def hide_animated(self, duration=250):
+        """
+        Ocultar la card con animación de colapso hacia el centro.
+        Usa GeometryAnimator para crear efecto de desaparición.
+        """
+        self._hide_anim = GeometryAnimator.collapse_to_center(
+            self, duration, on_finished=self.hide
+        )
+        self._hide_anim.start()
+        return self._hide_anim
+    
+    def morph_to_rect(self, target_rect: QRect, duration=350):
+        """
+        Transformar la geometría de la card suavemente.
+        Útil para redimensionar o reposicionar dinámicamente.
+        """
+        self._morph_anim = GeometryAnimator.morph_to(self, target_rect, duration)
+        self._morph_anim.start()
+        return self._morph_anim
 
 
 class ModernButton(QPushButton, AnimationMixin):
@@ -102,6 +135,15 @@ class ModernButton(QPushButton, AnimationMixin):
     def _on_click_animation(self):
         """Efecto de pulso al hacer clic."""
         self.pulse_effect(scale=1.05, duration=150)
+    
+    def slide_to(self, target_rect: QRect, duration=300):
+        """
+        Deslizar el botón hacia una nueva posición/tamaño.
+        Usa GeometryAnimator para animación fluida.
+        """
+        self._slide_anim = GeometryAnimator.slide_and_resize(self, target_rect, duration)
+        self._slide_anim.start()
+        return self._slide_anim
     
     def apply_style(self):
         styles = {
@@ -315,12 +357,37 @@ class ProgressCard(Card):
         if status_text:
             self.status_label.setText(status_text)
     
-    def set_completed(self):
+    def set_completed(self, animate=True):
+        """Marcar como completado con animación de pulso opcional."""
         self.progress_bar.setValue(100)
         self.status_label.setText("✓ Completado")
         self.status_label.setStyleSheet("color: #1DB954; background: transparent;")
+        if animate:
+            self.pulse_effect(scale=1.03, duration=250)
     
-    def set_error(self, message):
+    def show_at_rect(self, rect: QRect, duration=350):
+        """
+        Mostrar el ProgressCard expandiéndose hacia un rect específico.
+        Útil para mostrar progreso en una ubicación determinada.
+        """
+        self._appear_anim = GeometryAnimator.expand_from_center(self, rect, duration)
+        self.show()
+        self._appear_anim.start()
+        return self._appear_anim
+    
+    def dismiss_animated(self, duration=200):
+        """
+        Ocultar el ProgressCard con animación de colapso.
+        Útil para descartar notificaciones de progreso.
+        """
+        self._dismiss_anim = GeometryAnimator.collapse_to_center(
+            self, duration, on_finished=self.hide
+        )
+        self._dismiss_anim.start()
+        return self._dismiss_anim
+    
+    def set_error(self, message, animate=True):
+        """Mostrar estado de error con animación de sacudida opcional."""
         self.status_label.setText(f"✕ {message}")
         self.status_label.setStyleSheet("color: #E53935; background: transparent;")
         self.progress_bar.setStyleSheet("""
@@ -334,6 +401,8 @@ class ProgressCard(Card):
                 border-radius: 3px;
             }
         """)
+        if animate:
+            self.shake_effect(intensity=8, duration=400)
 
 
 class Divider(QFrame):

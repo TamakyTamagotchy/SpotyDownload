@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QListWidget, QListWidgetItem, QFrame)
 from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from downloader.utils import extract_id
 from core.download_manager import DownloadManager
 from ui.components.queue_item import QueueItemWidget
@@ -193,13 +193,16 @@ class DownloadPage(QWidget):
             self.url_input.set_error(True)
 
     def on_task_added(self, task):
-        """Callback cuando se agrega una tarea."""
+        """Callback cuando se agrega una tarea con animación."""
         item = QListWidgetItem(self.queue_list)
         item.setSizeHint(QSize(0, 80))
         
         widget = QueueItemWidget(task)
         self.queue_list.addItem(item)
         self.queue_list.setItemWidget(item, widget)
+        
+        # Animar el nuevo item con efecto de pulso
+        QTimer.singleShot(50, lambda: widget.pulse_effect(scale=1.02, duration=250))
         
         self.update_empty_state()
 

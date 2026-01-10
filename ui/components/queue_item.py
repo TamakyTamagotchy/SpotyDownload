@@ -2,9 +2,10 @@ from PyQt6.QtWidgets import (QHBoxLayout, QVBoxLayout, QLabel,
                              QProgressBar, QPushButton, QFrame)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QCursor
+from .animations import AnimationMixin
 
 
-class QueueItemWidget(QFrame):
+class QueueItemWidget(QFrame, AnimationMixin):
     """Widget moderno para items en la cola de descargas."""
     
     def __init__(self, task, parent=None):
@@ -12,6 +13,7 @@ class QueueItemWidget(QFrame):
         self.task = task
         self._is_completed = False
         self._is_error = False
+        self._original_geometry = None
         
         self.setObjectName("queueItem")
         self.setup_style()
@@ -159,6 +161,9 @@ class QueueItemWidget(QFrame):
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.setVisible(False)
         
+        # Animación de pulso para feedback visual de completado
+        self.pulse_effect(scale=1.02, duration=300)
+        
         # Cambiar estilo del progress bar
         self.progress_bar.setStyleSheet("""
             QProgressBar {
@@ -179,6 +184,9 @@ class QueueItemWidget(QFrame):
         self.status_label.setStyleSheet("color: #E53935; background: transparent;")
         self.progress_text.setText("Error")
         self.progress_text.setStyleSheet("color: #E53935; background: transparent;")
+        
+        # Animación de sacudida para indicar error
+        self.shake_effect(intensity=6, duration=350)
         
         self.progress_bar.setStyleSheet("""
             QProgressBar {
