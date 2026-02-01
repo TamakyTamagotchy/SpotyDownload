@@ -8,8 +8,9 @@ __pycache__/
 *.txt
 *.md
 *.json
+*.spotify_cache
 # Ignorar credenciales y salidas
-.spotify_cache/
+.spotify_cache
 spotify_credentials.json
 output.txt
 error_output.txt
@@ -20,3 +21,4 @@ error_output.txt
 # Otros archivos grandes o locales
 *.db
 *.sqlite
+*deno.exe

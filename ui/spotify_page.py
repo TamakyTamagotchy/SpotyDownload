@@ -24,7 +24,8 @@ class SpotifyPage(QWidget):
         
         self.initUI()
         self.load_config()
-        self.auto_connect_if_cached()
+        # Auto-conectar después de un pequeño delay para que la UI esté lista
+        QTimer.singleShot(500, self.auto_connect_if_cached)
     
     def initUI(self):
         layout = QVBoxLayout(self)
@@ -149,24 +150,47 @@ class SpotifyPage(QWidget):
         parent_layout.addWidget(config_group)
     
     def auto_connect_if_cached(self):
-        """Intentar conectar automáticamente si hay token en cache"""
+        """Intentar conectar automáticamente si hay credenciales y token en cache"""
         try:
-            if os.path.exists(CACHE_FILE) and self.client_id_input.text() and self.client_secret_input.text():
-                logging.info("Token de cache encontrado, intentando conexión automática...")
-                self.create_spotify_auth()
+            # Verificar que hay credenciales guardadas
+            if not self.client_id_input.text() or not self.client_secret_input.text():
+                logging.info("No hay credenciales guardadas, omitiendo auto-conexión")
+                return
                 
-                if self.sp_oauth:
-                    token_info = self.sp_oauth.get_cached_token()
-                    if token_info:
-                        sp = spotipy.Spotify(auth_manager=self.sp_oauth)
-                        # Verificar que el token funciona
-                        sp.current_user()
-                        logging.info("Reconexión automática exitosa")
-                        self.on_auth_success(sp)
-                        return
-                        
+            # Verificar que existe el cache
+            if not os.path.exists(CACHE_FILE):
+                logging.info("No hay cache de Spotify, omitiendo auto-conexión")
+                return
+            
+            logging.info("Intentando conexión automática a Spotify...")
+            self.update_connection_status("🟡 Conectando automáticamente...", "orange")
+            
+            # Crear autenticación
+            if not self.create_spotify_auth():
+                logging.warning("No se pudo crear autenticación para auto-conexión")
+                self.update_connection_status("🔴 No conectado", "red")
+                return
+            
+            # Obtener token del cache
+            token_info = self.sp_oauth.get_cached_token()
+            if not token_info:
+                logging.info("Token de cache no válido o expirado")
+                self.update_connection_status("🔴 No conectado", "red")
+                return
+            
+            # Crear cliente de Spotify
+            sp = spotipy.Spotify(auth_manager=self.sp_oauth)
+            
+            # Verificar que el token funciona
+            user = sp.current_user()
+            username = user.get('display_name', user.get('id', 'Usuario'))
+            logging.info(f"✅ Reconexión automática exitosa como: {username}")
+            
+            self.on_auth_success(sp)
+            
         except Exception as e:
             logging.info(f"No se pudo reconectar automáticamente: {e}")
+            self.update_connection_status("🔴 No conectado", "red")
     
     def create_spotify_auth(self):
         """Crear objeto de autenticación de Spotify"""

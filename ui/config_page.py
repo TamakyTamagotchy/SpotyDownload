@@ -86,19 +86,6 @@ class ConfigPage(QWidget):
 
         content_layout.addWidget(system_group)
 
-        # --- Sección de Apariencia ---
-        appearance_group = QGroupBox("🎨 Apariencia")
-        appearance_layout = QVBoxLayout(appearance_group)
-        
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Oscuro", "Claro"])
-        self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
-        
-        appearance_layout.addWidget(QLabel("Tema:"))
-        appearance_layout.addWidget(self.theme_combo)
-        
-        content_layout.addWidget(appearance_group)
-
         content_layout.addStretch()
         scroll.setWidget(content_widget)
         main_layout.addWidget(scroll)
@@ -135,12 +122,6 @@ class ConfigPage(QWidget):
         index = self.quality_combo.findText(quality)
         if index >= 0:
             self.quality_combo.setCurrentIndex(index)
-            
-        theme = self.settings_manager.get("theme")
-        theme_text = "Oscuro" if theme == "dark" else "Claro"
-        index = self.theme_combo.findText(theme_text)
-        if index >= 0:
-            self.theme_combo.setCurrentIndex(index)
 
     def browse_download_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta de descarga")
@@ -152,22 +133,11 @@ class ConfigPage(QWidget):
         if folder:
             self.ffmpeg_input.setText(folder)
 
-    def on_theme_changed(self, text):
-        # Previsualización inmediata del tema (opcional)
-        pass
-
     def save_settings(self):
         try:
             self.settings_manager.set("download_folder", self.path_input.text())
             self.settings_manager.set("ffmpeg_path", self.ffmpeg_input.text())
             self.settings_manager.set("default_quality", self.quality_combo.currentText())
-            
-            theme_code = "dark" if self.theme_combo.currentText() == "Oscuro" else "light"
-            self.settings_manager.set("theme", theme_code)
-            
-            # Aplicar tema globalmente
-            if self.parent:
-                self.parent.load_stylesheet(f"{theme_code}_theme.qss")
             
             QMessageBox.information(self, "Éxito", "Configuración guardada correctamente")
             

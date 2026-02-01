@@ -69,23 +69,19 @@ class DownloadManager(QObject, metaclass=Singleton):
             download_folder = self.settings.get("download_folder")
             quality = self.settings.get("default_quality")
             
+            worker_config = {
+                'spotify_url': {'class': DownloadWorker, 'is_qthread': False, 'data_func': lambda d: d['id']},
+                'spotify_track': {'class': SpotifyDownloadWorker, 'is_qthread': True, 'data_func': lambda d: [d]},
+                'spotify_playlist': {'class': SpotifyPlaylistDownloadWorker, 'is_qthread': True, 'data_func': lambda d: d['tracks']}
+            }
+            
             worker = None
             is_qthread = False
             
-            if task['type'] == 'spotify_url':
-                # DownloadWorker es QObject, necesita QThread
-                worker = DownloadWorker(task['data']['id'], download_folder, quality)
-                is_qthread = False
-                
-            elif task['type'] == 'spotify_track':
-                # SpotifyDownloadWorker es QThread
-                worker = SpotifyDownloadWorker([task['data']], download_folder, quality)
-                is_qthread = True
-                
-            elif task['type'] == 'spotify_playlist':
-                # SpotifyPlaylistDownloadWorker es QThread
-                worker = SpotifyPlaylistDownloadWorker(task['data']['tracks'], download_folder, quality)
-                is_qthread = True
+            if task['type'] in worker_config:
+                config = worker_config[task['type']]
+                worker = config['class'](config['data_func'](task['data']), download_folder, quality)
+                is_qthread = config['is_qthread']
 
             if worker:
                 task['worker'] = worker

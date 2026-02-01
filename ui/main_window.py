@@ -13,6 +13,7 @@ from ui.components.navigation import SideNavigation, TopBar
 from ui.components.toast import toast
 from ui.components.drawer import Drawer
 from ui.components.global_progress import progress_manager
+from ui.components.quick_settings import QuickSettingsPanel
 
 
 class ModernApp(QMainWindow):
@@ -40,7 +41,7 @@ class ModernApp(QMainWindow):
     
     def init_ui(self):
         """Inicializar la interfaz de usuario."""
-        self.setWindowTitle("Spotify Downloader")
+        self.setWindowTitle("MusicBlast")
         self.setMinimumSize(1100, 700)
         self.resize(1200, 800)
         
@@ -86,7 +87,12 @@ class ModernApp(QMainWindow):
         
         # Drawer para configuración rápida
         self.settings_drawer = Drawer(central, Drawer.RIGHT, 380)
-        self.settings_drawer.set_title("Configuración Rápida")
+        self.settings_drawer.set_title("⚙️ Configuración Rápida")
+        
+        # Agregar panel de configuraciones rápidas al drawer
+        self.quick_settings_panel = QuickSettingsPanel()
+        self.quick_settings_panel.spotify_reconnect.connect(self.on_quick_spotify_reconnect)
+        self.settings_drawer.add_widget(self.quick_settings_panel)
         
         # Configurar el ToastManager para que los toasts aparezcan en la ventana
         toast.set_parent(central)
@@ -286,9 +292,9 @@ class ModernApp(QMainWindow):
         toast.info("Desconectado de Spotify")
         logging.info("Spotify desconectado")
     
-    def change_theme(self, is_dark):
-        """Cambiar tema de la aplicación."""
-        if is_dark:
-            self.load_stylesheet("dark_theme.qss")
-        else:
-            self.load_stylesheet("light_theme.qss")
+    def on_quick_spotify_reconnect(self):
+        """Manejar reconexión de Spotify desde configuraciones rápidas."""
+        # Cambiar a la página de Spotify y cerrar el drawer
+        self.side_nav.set_current_index(1)
+        self.settings_drawer.close_drawer()
+        toast.info("Ve a la página de Spotify para reconectar")

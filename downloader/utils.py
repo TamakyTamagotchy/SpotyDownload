@@ -6,6 +6,129 @@ from config.settings_manager import SettingsManager
 
 HISTORY_FILE = "download_history.txt"
 
+def _get_js_runtime_options():
+    """
+    Configura el runtime de JavaScript para yt-dlp.
+    
+    YouTube requiere un JS runtime (deno) para resolver challenges.
+    Esta función usa exclusivamente el ejecutable deno.exe en la ruta por defecto
+    del proyecto (Deno/deno.exe), que viene incluido con el programa.
+    
+    La detección se cachea para mejorar el rendimiento.
+    
+    También habilita remote_components para descargar el script de
+    resolución de challenges desde GitHub (requerido por yt-dlp).
+    
+    FORMATO CORRECTO de js_runtimes para API Python:
+    js_runtimes = {'deno': {'path': '/ruta/a/deno'}}
+    """
+    # Intentar obtener de cache primero
+    cached_path = getattr(_get_js_runtime_options, '_cached_deno_path', None)
+    if cached_path and os.path.exists(cached_path) and cached_path.endswith('.exe'):
+        logging.debug(f"Deno encontrado en cache: {cached_path}")
+        return {
+            'js_runtimes': {'deno': {'path': cached_path}},
+            'remote_components': ['ejs:github'],
+        }
+    
+    # Obtener el directorio base del proyecto (donde está src/ o similar)
+    current_file = os.path.abspath(__file__)
+    downloader_dir = os.path.dirname(current_file)  # downloader
+    project_dir = os.path.dirname(downloader_dir)  # proyecto raíz
+    
+    # Ruta por defecto obligatoria
+    project_deno_path = os.path.join(project_dir, 'Deno', 'deno.exe')
+    
+    if os.path.exists(project_deno_path) and project_deno_path.endswith('.exe'):
+        # Cachear la ruta para futuras ejecuciones
+        _get_js_runtime_options._cached_deno_path = project_deno_path
+        logging.info(f"Deno encontrado y cacheado en ruta por defecto: {project_deno_path}")
+        return {
+            'js_runtimes': {'deno': {'path': project_deno_path}},
+            'remote_components': ['ejs:github'],
+        }
+    
+    logging.warning("Deno no encontrado en la ruta por defecto, YouTube puede tener formatos limitados")
+    return {}
+
+def _get_youtube_extractor_args(last_resort_mode=False):
+    """
+    Configura argumentos avanzados del extractor de YouTube.
+    Incluye PO Token, player clients, y configuraciones para evitar throttling.
+    """
+    args = {}
+    
+    if last_resort_mode:
+        # Modo último recurso: usar client menos restringido
+        args['player_client'] = ['web_safari', 'web', 'android']
+        args['player_skip'] = ['webpage', 'configs']
+    else:
+        # Configuración estándar con múltiples clients
+        args['player_client'] = ['tv', 'web_safari', 'web', 'android']
+        args['player_skip'] = ['webpage', 'configs']
+    
+    # Configuración de PO Token (Proof of Origin Token) (nuevo)
+    po_token = _get_po_token_config()
+    if po_token:
+        args['po_token'] = po_token
+    
+    # Visitor Data para mejorar la extracción (nuevo)
+    # Por ahora no implementado
+    
+    # Tiempo de espera entre extracción y descarga para asegurar disponibilidad (nuevo)
+    args['playback_wait'] = ['6']  # 6 segundos (recomendado por yt-dlp)
+    
+    # Configuraciones adicionales de formato
+    args['formats'] = ['dashy', 'incomplete']  # Incluir formatos DASH e incompletos
+    
+    return args
+
+def _get_po_token_config():
+    """
+    Obtiene el PO Token (Proof of Origin Token) para YouTube.
+    Lee desde config/youtube_po_token.txt si existe.
+    
+    Formato: CLIENT.CONTEXT+PO_TOKEN
+    Ejemplo: "web.gvs+XXX,web.player=XXX,web_safari.gvs+YYY"
+    """
+    try:
+        # Buscar en el directorio del proyecto
+        current_file = os.path.abspath(__file__)
+        downloader_dir = os.path.dirname(current_file)
+        project_dir = os.path.dirname(downloader_dir)
+        config_dir = os.path.join(project_dir, 'config')
+        po_token_file = os.path.join(config_dir, 'youtube_po_token.txt')
+        
+        if os.path.exists(po_token_file):
+            with open(po_token_file, 'r', encoding='utf-8') as f:
+                po_token = f.read().strip()
+                if po_token:
+                    logging.info("PO Token cargado desde archivo de configuración")
+                    return po_token
+    except Exception as e:
+        logging.debug(f"Error cargando PO Token: {e}")
+    
+    return None
+
+"""def _get_impersonation_target():
+    """
+"""    Obtiene el objetivo de impersonación para bypass de protecciones TLS.
+    Requiere curl_cffi instalado.
+    
+    Returns:
+        str: Target de impersonación (ej: 'chrome', 'safari', 'chrome-110')
+    """
+"""    try:
+        # Verificar si curl_cffi está disponible sin forzar import estático
+        __import__('curl_cffi')
+        
+        # Retornar el target más compatible
+        # Opciones: chrome, chrome-110, chrome-99, edge, safari
+        return 'chrome-110'  # Versión específica de Chrome
+    except ImportError:
+        logging.debug("curl_cffi no disponible para impersonación")
+        return None
+"""
 def extract_id(link):
     pattern = re.compile(r'(?:playlist|track)/(\w+)')
     match = pattern.search(link)
@@ -243,6 +366,7 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3, ou
     """
     import glob
     import subprocess
+    import os
     
     base, _ = os.path.splitext(filename)
     outtmpl = base + '.%(ext)s'
@@ -257,6 +381,9 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3, ou
     download_dir = os.path.dirname(base)
     base_name = os.path.basename(base)
 
+    # Obtener opciones de JS runtime (Deno)
+    js_runtime_opts = _get_js_runtime_options()
+    
     # Descargar siempre el mejor audio disponible
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -264,7 +391,38 @@ def download_song(url, filename, q, pause_event, cancel_event, max_retries=3, ou
         'progress_hooks': [lambda d: q.put(d)],
         'ffmpeg_location': ffmpeg_path,
         'restrictfilenames': False,  # Permitir caracteres especiales
+        'retries': 10,  # Aumentar reintentos
+        'fragment_retries': 10,
+        'extractor_retries': 3,
+        'file_access_retries': 3,
+        'socket_timeout': 30,
+        'concurrent_fragment_downloads': 3,
+        'sleep_interval': 1,
+        'max_sleep_interval': 5,
+        'sleep_requests': 0.5,
+        'retry_sleep_functions': {
+            'http': lambda n: min(2 ** n, 60),
+            'fragment': lambda n: min(2 ** n, 30),
+            'extractor': lambda n: min(3 * n, 20),
+        },
     }
+    
+    # Agregar opciones de JS runtime si están disponibles
+    js_runtime_opts = _get_js_runtime_options()
+    if js_runtime_opts:
+        ydl_opts.update(js_runtime_opts)
+    
+    # Agregar extractor args específicos para YouTube
+    if 'youtube' in url.lower() or 'youtu.be' in url.lower():
+        youtube_extractor_args = _get_youtube_extractor_args()
+        if youtube_extractor_args:
+            ydl_opts['extractor_args'] = {'youtube': youtube_extractor_args}
+    
+    # Intentar configurar impersonación si está disponible (comentado por compatibilidad)
+    # impersonate_target = _get_impersonation_target()
+    # if impersonate_target:
+    #     ydl_opts['impersonate'] = impersonate_target
+    #     logging.info(f"Impersonación configurada: {impersonate_target}")
 
     for attempt in range(max_retries):
         try:

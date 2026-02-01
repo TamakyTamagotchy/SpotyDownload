@@ -262,25 +262,77 @@ class SpotifyLibraryPage(QWidget):
         self.download_info.setStyleSheet("color: #666666;")
         
         # Botón de descargar toda la playlist - compacto
-        self.download_all_button = QPushButton("⬇ Descargar Todo")
+        self.download_all_button = QPushButton("  Descargar Playlist")
         self.download_all_button.setEnabled(False)
-        self.download_all_button.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
+        self.download_all_button.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         self.download_all_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.download_all_button.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_DialogSaveButton)) # Fallback icon
+        # Usar un contenedor con icono personalizado si es posible, aquí usaremos estilo CSS puro para el icono
+        self.download_all_button.setText("   Descargar Todo")
+        
         self.download_all_button.clicked.connect(self.download_all_tracks)
         self.download_all_button.setStyleSheet("""
             QPushButton {
                 background-color: #1DB954;
                 color: white;
-                padding: 8px 16px;
-                border-radius: 14px;
+                padding: 10px 24px;
+                border-radius: 20px;
                 border: none;
+                text-align: center;
+                font-family: 'Segoe UI', sans-serif;
+                letter-spacing: 0.5px;
             }
             QPushButton:hover {
                 background-color: #1ed760;
+                transform: scale(1.02);
+                box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
+            }
+            QPushButton:pressed {
+                background-color: #1aa34a;
+                transform: scale(0.98);
             }
             QPushButton:disabled {
                 background-color: #2A2A2A;
                 color: #555555;
+                box-shadow: none;
+            }
+            /* Icono simulado con unicode */
+            QPushButton::before {
+                content: "↓";
+                font-weight: bold;
+                margin-right: 8px;
+                font-size: 16px;
+            }
+        """)
+        
+        # Eliminar el texto anterior para que funcione el CSS ::before content trick si fuera web, 
+        # pero en Qt stylesheets ::before no funciona igual para contenido.
+        # Vamos a usar texto directo con unicode para el icono
+        self.download_all_button.setText("↓  Descargar Todo")
+        self.download_all_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1DB954;
+                color: white;
+                padding: 10px 24px;
+                border-radius: 22px;
+                border: none;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 14px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton:pressed {
+                background-color: #1aa34a;
+                padding-top: 12px; /* Efecto de presionado sutil */
+                padding-bottom: 8px;
+            }
+            QPushButton:disabled {
+                background-color: #252525;
+                color: #555555;
+                border: 1px solid #333333;
             }
         """)
         
@@ -486,6 +538,7 @@ class SpotifyLibraryPage(QWidget):
         """Crear widget para mostrar una canción con portada"""
         frame = QFrame()
         frame.setObjectName("trackFrame")
+        frame.setFixedHeight(50)  # Altura fija para todos los items
         frame.setStyleSheet("""
             #trackFrame {
                 background-color: #252525;
@@ -498,14 +551,14 @@ class SpotifyLibraryPage(QWidget):
         """)
         
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 6, 8, 6)  # Márgenes uniformes
+        layout.setSpacing(12)
         
         # Número de track
         track_num_label = QLabel(f"{track_number}")
         track_num_label.setFont(QFont("Segoe UI", 9))
         track_num_label.setStyleSheet("color: #555555; background: transparent;")
-        track_num_label.setFixedWidth(20)
+        track_num_label.setFixedWidth(25)
         track_num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Portada del álbum - más pequeña
@@ -526,6 +579,7 @@ class SpotifyLibraryPage(QWidget):
         info_widget = QWidget()
         info_widget.setStyleSheet("background: transparent;")
         info_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        info_widget.setMaximumWidth(9999)  # Permitir expansión pero limitada
         info_layout = QVBoxLayout(info_widget)
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.setSpacing(2)
@@ -537,6 +591,9 @@ class SpotifyLibraryPage(QWidget):
         title_label.setStyleSheet("color: #FFFFFF; background: transparent;")
         title_label.setWordWrap(False)
         title_label.setTextFormat(Qt.TextFormat.PlainText)
+        # Habilitar elipsis para cortar texto largo
+        title_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         
         # Artista + duración - con elipsis si es muy largo
         artists = ', '.join([artist['name'] for artist in track['artists']])
@@ -547,41 +604,64 @@ class SpotifyLibraryPage(QWidget):
         artist_label.setFont(QFont("Segoe UI", 9))
         artist_label.setStyleSheet("color: #888888; background: transparent;")
         artist_label.setTextFormat(Qt.TextFormat.PlainText)
+        # Habilitar elipsis para cortar texto largo
+        artist_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        artist_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         
         info_layout.addWidget(title_label)
         info_layout.addWidget(artist_label)
         
-        # Botón de descarga - SIEMPRE visible con tamaño fijo
-        download_button = QPushButton("⬇")
-        download_button.setFixedSize(32, 32)
-        download_button.setMinimumSize(32, 32)
+        # Contenedor para el botón con ancho fijo para garantizar posición
+        button_container = QWidget()
+        button_container.setFixedWidth(50)  # Más ancho para dar espacio
+        button_container.setStyleSheet("background: transparent;")
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(4, 0, 4, 0)  # Márgenes para evitar cortes
+        button_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Botón de descarga profesional con ícono SVG-style
+        download_button = QPushButton("↓")
+        download_button.setFixedSize(38, 38)
+        download_button.setMinimumSize(38, 38)
+        download_button.setMaximumSize(38, 38)
         download_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         download_button.setStyleSheet("""
             QPushButton {
-                background-color: #1DB954;
-                color: white;
-                border-radius: 16px;
-                border: none;
-                font-size: 14px;
-                font-weight: bold;
+                background-color: transparent;
+                color: #B3B3B3;
+                border-radius: 19px;
+                border: 2px solid #535353;
+                font-size: 20px;
+                font-family: 'Segoe UI Symbol', sans-serif;
+                padding-bottom: 2px; /* Ajuste visual vertical */
             }
             QPushButton:hover {
-                background-color: #1ed760;
+                background-color: transparent;
+                color: #FFFFFF;
+                border: 2px solid #FFFFFF;
+                transform: scale(1.05);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 0.1);
+                border: 2px solid #B3B3B3;
+                color: #B3B3B3;
+                padding-top: 0px; 
             }
             QPushButton:disabled {
-                background-color: #333333;
-                color: #555555;
+                border: 2px solid #333333;
+                color: #333333;
             }
         """)
-        download_button.setToolTip("Descargar")
+        download_button.setToolTip("Descargar esta canción")
         download_button.clicked.connect(lambda checked, t=track, f=frame: self.download_single_track(t, f))
         
-        # Layout con tamaños fijos para garantizar visibilidad del botón
-        layout.addWidget(track_num_label)
-        layout.addWidget(cover_label)
-        layout.addWidget(info_widget, 1)  # info_widget se expande
-        layout.addSpacing(4)
-        layout.addWidget(download_button, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        button_layout.addWidget(download_button)
+        
+        # Layout principal - todos los elementos con tamaños controlados
+        layout.addWidget(track_num_label, 0)
+        layout.addWidget(cover_label, 0)
+        layout.addWidget(info_widget, 1)  # Solo info_widget se expande
+        layout.addWidget(button_container, 0)  # Botón siempre en posición fija
         
         return frame
     
@@ -645,8 +725,19 @@ class SpotifyLibraryPage(QWidget):
             # Actualizar botón
             download_button = track_widget.findChild(QPushButton)
             if download_button:
-                download_button.setText("✅")
-                download_button.setToolTip("Añadido a la cola")
+                download_button.setText("✓")
+                download_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2A2A2A;
+                        color: #1DB954;
+                        border-radius: 19px;
+                        border: 2px solid #1DB954;
+                        font-size: 18px;
+                        font-weight: bold;
+                        padding: 0px;
+                    }
+                """)
+                download_button.setToolTip("En cola de descarga")
                 download_button.setEnabled(False)
                 
             # Notificar al usuario (opcional, para no ser intrusivo)
