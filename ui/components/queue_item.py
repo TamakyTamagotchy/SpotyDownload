@@ -1,9 +1,46 @@
 from PyQt6.QtWidgets import (QHBoxLayout, QVBoxLayout, QLabel, 
                              QProgressBar, QPushButton, QFrame, QGraphicsDropShadowEffect)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QCursor, QColor
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QFont, QCursor, QColor, QPixmap
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from .animations import AnimationMixin
 from config.settings_manager import SettingsManager
+
+
+class SpotifyInfoLoader(QThread):
+    """Thread para cargar información de Spotify sin bloquear la UI."""
+    info_loaded = pyqtSignal(dict)
+    error = pyqtSignal(str)
+    
+    def __init__(self, spotify_id):
+        super().__init__()
+        self.spotify_id = spotify_id
+    
+    def run(self):
+        try:
+            from downloader.spotify import get_spotify_item
+            item = get_spotify_item(self.spotify_id)
+            if item:
+                # Extraer información relevante
+                info = {
+                    'title': item.get('name', 'Sin título'),
+                    'artists': ', '.join([a['name'] for a in item.get('artists', [])]),
+                    'cover_url': ''
+                }
+                
+                # Obtener portada
+                if 'album' in item and item['album'] and 'images' in item['album']:
+                    images = item['album']['images']
+                    if images:
+                        info['cover_url'] = images[0]['url']
+                elif 'images' in item and item['images']:
+                    info['cover_url'] = item['images'][0]['url']
+                
+                self.info_loaded.emit(info)
+            else:
+                self.error.emit("No se pudo obtener información de Spotify")
+        except Exception as e:
+            self.error.emit(str(e))
 
 class QueueItemWidget(QFrame, AnimationMixin):
     """Widget moderno para items en la cola de descargas."""
@@ -14,6 +51,8 @@ class QueueItemWidget(QFrame, AnimationMixin):
         self._is_completed = False
         self._is_error = False
         self._original_geometry = None
+        self._info_loader = None
+        self._network_manager = None
         
         # Colores fijos (Tema Oscuro)
         self.colors = {
@@ -31,6 +70,10 @@ class QueueItemWidget(QFrame, AnimationMixin):
         self.setup_style()
         self.init_ui()
         self.connect_signals()
+        
+        # Si es una descarga de Spotify URL, cargar la información
+        if task.get('type') == 'spotify_url' and task.get('title') == 'Cargando...':
+            self._load_spotify_info()
 
     def setup_style(self):
         """Configurar estilos del widget con CSS profesional."""
@@ -63,26 +106,34 @@ class QueueItemWidget(QFrame, AnimationMixin):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(16)
         
-        # Icono con fondo
-        icon_container = QFrame()
-        icon_container.setFixedSize(48, 48)
-        icon_container.setStyleSheet(f"""
+        # Icono/Portada con fondo
+        self.icon_container = QFrame()
+        self.icon_container.setFixedSize(48, 48)
+        self.icon_container.setStyleSheet(f"""
             QFrame {{
                 background-color: {c['icon_bg']};
                 border-radius: 12px;
             }}
         """)
         
-        icon_layout = QVBoxLayout(icon_container)
+        icon_layout = QVBoxLayout(self.icon_container)
         icon_layout.setContentsMargins(0, 0, 0, 0)
         
-        icon_label = QLabel("🎵")
-        icon_label.setFont(QFont("Segoe UI Emoji", 20))
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setStyleSheet("background: transparent; color: white;")
-        icon_layout.addWidget(icon_label)
+        self.icon_label = QLabel("🎵")
+        self.icon_label.setFont(QFont("Segoe UI Emoji", 20))
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet("background: transparent; color: white;")
+        icon_layout.addWidget(self.icon_label)
         
-        layout.addWidget(icon_container)
+        # Label para la portada (inicialmente oculto)
+        self.cover_label = QLabel()
+        self.cover_label.setFixedSize(48, 48)
+        self.cover_label.setScaledContents(True)
+        self.cover_label.setStyleSheet("border-radius: 12px;")
+        self.cover_label.setVisible(False)
+        
+        layout.addWidget(self.icon_container)
+        layout.addWidget(self.cover_label)
         
         # Info principal
         info_layout = QVBoxLayout()
@@ -256,4 +307,79 @@ class QueueItemWidget(QFrame, AnimationMixin):
         self.status_label.setText("⏹ Cancelado")
         self.status_label.setStyleSheet("color: #FF9800; background: transparent;")
         self.cancel_btn.setEnabled(False)
+
+    def _load_spotify_info(self):
+        """Cargar información de Spotify en un thread separado."""
+        spotify_id = self.task.get('data', {}).get('id')
+        if not spotify_id:
+            return
+        
+        self._info_loader = SpotifyInfoLoader(spotify_id)
+        self._info_loader.info_loaded.connect(self._on_spotify_info_loaded)
+        self._info_loader.error.connect(self._on_spotify_info_error)
+        self._info_loader.start()
+    
+    def _on_spotify_info_loaded(self, info):
+        """Callback cuando se carga la información de Spotify."""
+        # Actualizar título
+        title = info.get('title', 'Sin título')
+        artists = info.get('artists', '')
+        
+        display_title = f"{title}" if not artists else f"{title}"
+        
+        # Actualizar el label con elipsis
+        font_metrics = self.title_label.fontMetrics()
+        elided_text = font_metrics.elidedText(display_title, Qt.TextElideMode.ElideRight, 300)
+        self.title_label.setText(elided_text)
+        self.title_label.setToolTip(f"{title} - {artists}")
+        
+        # Actualizar estado
+        self.status_label.setText(f"{artists}" if artists else "En cola...")
+        
+        # Actualizar la tarea con el título real
+        self.task['title'] = title
+        self.task['data']['title'] = title
+        self.task['data']['artists'] = artists
+        self.task['data']['cover_url'] = info.get('cover_url', '')
+        
+        # Cargar portada
+        cover_url = info.get('cover_url')
+        if cover_url:
+            self._load_cover_image(cover_url)
+    
+    def _on_spotify_info_error(self, error):
+        """Callback cuando hay error cargando información de Spotify."""
+        self.title_label.setText("Error cargando info")
+        self.status_label.setText(error[:30] + "..." if len(error) > 30 else error)
+    
+    def _load_cover_image(self, url):
+        """Cargar la imagen de portada desde una URL."""
+        from PyQt6.QtCore import QUrl
+        
+        if not self._network_manager:
+            self._network_manager = QNetworkAccessManager(self)
+            self._network_manager.finished.connect(self._on_cover_loaded)
+        
+        request = QNetworkRequest(QUrl(url))
+        self._network_manager.get(request)
+    
+    def _on_cover_loaded(self, reply):
+        """Callback cuando se carga la imagen de portada."""
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            data = reply.readAll()
+            pixmap = QPixmap()
+            if pixmap.loadFromData(data):
+                # Escalar y mostrar la imagen
+                scaled_pixmap = pixmap.scaled(
+                    48, 48, 
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.cover_label.setPixmap(scaled_pixmap)
+                
+                # Ocultar el ícono y mostrar la portada
+                self.icon_container.setVisible(False)
+                self.cover_label.setVisible(True)
+        
+        reply.deleteLater()
 

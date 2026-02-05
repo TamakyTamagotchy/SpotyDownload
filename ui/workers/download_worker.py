@@ -2,6 +2,7 @@ from PyQt6.QtCore import pyqtSignal, QObject, QThread
 import os, queue, threading, logging
 from downloader.utils import sanitize_filename, search_music_services, download_song, save_download_history, load_download_history, update_mp3_metadata_hybrid
 from downloader.spotify import get_spotify_item
+from config.settings_manager import SettingsManager
 
 class DownloadWorker(QObject):
     progress = pyqtSignal(int)
@@ -14,13 +15,14 @@ class DownloadWorker(QObject):
     status_changed = pyqtSignal(str)  # Estado actual
     converting = pyqtSignal()  # Cuando empieza conversión
     applying_metadata = pyqtSignal()  # Cuando aplica metadatos
-    download_started = pyqtSignal(str)  # Nombre de la canción
+    download_started = pyqtSignal(str, str)  # Nombre de la canción, cover_url
 
     def __init__(self, spotify_id, download_folder, quality):
         super().__init__()
         self.spotify_id = spotify_id
         self.download_folder = download_folder
         self.quality = quality
+        self.settings = SettingsManager()
         self.q = queue.Queue()
         self.pause_event = threading.Event()
         self.cancel_event = threading.Event()
@@ -96,22 +98,39 @@ class DownloadWorker(QObject):
                 'genre': genre
             }
             
-            # Emitir señal de inicio de descarga
-            self.download_started.emit(song_metadata['song'])
+            # Emitir señal de inicio de descarga con cover_url
+            self.download_started.emit(song_metadata['song'], cover_url or '')
             self.status_changed.emit(f"Buscando: {song_metadata['song']}")
             
-            # Determinar formato de salida según calidad
-            output_format = 'flac' if 'FLAC' in self.quality else 'mp3'
-            file_ext = '.flac' if output_format == 'flac' else '.mp3'
+            # Obtener formato de salida desde configuración
+            output_format = self.settings.get_audio_format()
+            file_ext = self.settings.get_file_extension()
+            
+            # Debug log
+            logging.info(f"[process_track] Formato desde settings: {output_format}, extensión: {file_ext}")
             
             filename = os.path.join(
                 self.download_folder, 
                 f'{sanitize_filename(song_metadata["song"])}{file_ext}'
             )
+            
+            logging.info(f"[process_track] Verificando archivo: {filename}")
+            logging.info(f"[process_track] Archivo existe: {os.path.exists(filename)}")
+            
             if os.path.exists(filename):
-                if not self.handle_existing_file(song_metadata['song'], filename):
+                file_action = self.settings.get_file_exists_action()
+                logging.info(f"[process_track] Acción configurada: {file_action}")
+                
+                # Verificar si se debe renombrar
+                if file_action == 'rename':
+                    filename = self.get_unique_filename(filename)
+                    logging.info(f"[process_track] Archivo renombrado a: {filename}")
+                elif not self.handle_existing_file(song_metadata['song'], filename):
+                    logging.info(f"[process_track] handle_existing_file retornó False, omitiendo")
                     self.progress.emit(int((track_index + 1) / total_tracks * 100))
                     return
+                else:
+                    logging.info(f"[process_track] handle_existing_file retornó True, continuando")
             
             self.status_changed.emit(f"Descargando: {song_metadata['song']}")
             url = self.find_download_url(song_metadata)
@@ -134,16 +153,63 @@ class DownloadWorker(QObject):
             self.progress.emit(int((track_index + 1) / total_tracks * 100))
 
     def handle_existing_file(self, song, filename):
-        self.ask_replace.emit(song, filename)
-        while self.replace_response is None:
-            QThread.msleep(100)
+        """Maneja archivos existentes según la configuración del usuario."""
+        file_action = self.settings.get_file_exists_action()
+        logging.info(f"[handle_existing_file] Acción: {file_action} para {filename}")
         
-        replace_response = self.replace_response
-        self.replace_response = None
+        if file_action == 'overwrite':
+            # Sobrescribir automáticamente
+            logging.info(f"[handle_existing_file] Sobrescribiendo: {filename}")
+            try:
+                os.remove(filename)
+            except Exception as e:
+                logging.error(f"Error eliminando archivo: {e}")
+            return True
+            
+        elif file_action == 'skip':
+            # Omitir descarga
+            logging.info(f"[handle_existing_file] Omitiendo (ya existe): {filename}")
+            return False
+            
+        elif file_action == 'rename':
+            # Renombrar - no eliminamos el original, retornamos True para continuar
+            # La lógica de renombrado se maneja en download_and_process_song
+            logging.info(f"[handle_existing_file] Se renombrará: {filename}")
+            return True
+            
+        elif file_action == 'ask':
+            # NOTA: El diálogo de preguntar no está implementado actualmente
+            # Por ahora, usar sobrescribir como fallback
+            logging.warning(f"[handle_existing_file] 'ask' seleccionado pero diálogo no implementado. Sobrescribiendo.")
+            try:
+                os.remove(filename)
+            except Exception as e:
+                logging.error(f"Error eliminando archivo: {e}")
+            return True
+            
+        else:
+            # Valor desconocido, sobrescribir por defecto
+            logging.warning(f"[handle_existing_file] Acción desconocida '{file_action}', sobrescribiendo")
+            try:
+                os.remove(filename)
+            except Exception as e:
+                logging.error(f"Error eliminando archivo: {e}")
+            return True
+    
+    def get_unique_filename(self, filename):
+        """Genera un nombre de archivo único agregando (1), (2), etc."""
+        if not os.path.exists(filename):
+            return filename
         
-        if replace_response:
-            os.remove(filename)
-        return replace_response
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        new_filename = f"{base} ({counter}){ext}"
+        
+        while os.path.exists(new_filename):
+            counter += 1
+            new_filename = f"{base} ({counter}){ext}"
+        
+        return new_filename
 
     def find_download_url(self, song_metadata):
         url = search_music_services(
@@ -231,7 +297,10 @@ class DownloadWorker(QObject):
             audio['TITLE'] = song_metadata['song']
             audio['ARTIST'] = song_metadata['artists']
             audio['ALBUM'] = song_metadata['album']
-            audio['GENRE'] = song_metadata.get('genre', '')
+            
+            # Género (asegurar que sea string, no None)
+            genre = song_metadata.get('genre') or ''
+            audio['GENRE'] = genre
             
             # Año
             if song_metadata.get('release_date'):
@@ -258,10 +327,6 @@ class DownloadWorker(QObject):
             logging.warning('mutagen no disponible para metadatos FLAC')
         except Exception as e:
             logging.error(f'Error aplicando metadatos FLAC: {e}')
-        except Exception as e:
-            logging.error(f'Error al descargar "{song_metadata["song"]}": {e}')
-            self.error.emit(f'Error al descargar "{song_metadata["song"]}": {str(e)}')
-        self.progress.emit(int((track_index + 1) / total_tracks * 100))
 
     def set_replace_response(self, response):
         self.replace_response = response

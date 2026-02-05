@@ -158,7 +158,12 @@ class DownloadManager(QObject, metaclass=Singleton):
         
         # Señales de estado
         if hasattr(worker, 'download_started'):
-            worker.download_started.connect(lambda name: progress_manager.show(name, cover_url))
+            # La señal puede emitir nombre y cover_url
+            try:
+                worker.download_started.connect(lambda name, url='': progress_manager.show(name, url or cover_url))
+            except TypeError:
+                # Si falla, conectar sin cover_url
+                worker.download_started.connect(lambda name: progress_manager.show(name, cover_url))
         if hasattr(worker, 'status_changed'):
             worker.status_changed.connect(lambda status: self._update_status(status))
         
