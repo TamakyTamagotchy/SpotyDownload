@@ -77,7 +77,6 @@ QLabel#statusLabel {
 QLabel#instructionsText {
     color: #495057;
     background-color: transparent;
-    line-height: 1.6;
 }
 
 /* ===== BOTONES ===== */
@@ -98,14 +97,12 @@ QPushButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 #F8F9FA, stop:1 #E9ECEF);
     border-color: #ADB5BD;
-    transform: translateY(-1px);
 }
 
 QPushButton:pressed {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 #E9ECEF, stop:1 #DEE2E6);
     border-color: #6C757D;
-    transform: translateY(0px);
 }
 
 QPushButton:disabled {
@@ -127,7 +124,6 @@ QPushButton#mainButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 #34CE57, stop:1 #28A745);
     border-color: #155724;
-    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
 }
 
 QPushButton#mainButton:pressed {
@@ -477,7 +473,6 @@ QMenu {
     border: 1px solid #DEE2E6;
     border-radius: 6px;
     padding: 4px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 QMenu::item {
@@ -560,12 +555,10 @@ QFrame#cardContainer {
     border-radius: 12px;
     padding: 16px;
     margin: 8px 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 QFrame#cardContainer:hover {
     border-color: #DEE2E6;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 QFrame#navFrame {

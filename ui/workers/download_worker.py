@@ -27,6 +27,9 @@ class DownloadWorker(QObject):
         self.pause_event = threading.Event()
         self.cancel_event = threading.Event()
         self.replace_response = None
+        self._file_exists_event = threading.Event()
+        self._batch_action = None
+        self._ask_renamed_filename = None
 
     def run(self):
         try:
@@ -120,11 +123,20 @@ class DownloadWorker(QObject):
             if os.path.exists(filename):
                 file_action = self.settings.get_file_exists_action()
                 logging.info(f"[process_track] Acción configurada: {file_action}")
-                
-                # Verificar si se debe renombrar
+
                 if file_action == 'rename':
                     filename = self.get_unique_filename(filename)
                     logging.info(f"[process_track] Archivo renombrado a: {filename}")
+                elif file_action == 'ask':
+                    self._ask_renamed_filename = None
+                    if not self.handle_existing_file(song_metadata['song'], filename):
+                        logging.info(f"[process_track] Usuario eligió omitir: {filename}")
+                        self.progress.emit(int((track_index + 1) / total_tracks * 100))
+                        return
+                    if self._ask_renamed_filename:
+                        filename = self._ask_renamed_filename
+                        self._ask_renamed_filename = None
+                        logging.info(f"[process_track] Usuario eligió renombrar a: {filename}")
                 elif not self.handle_existing_file(song_metadata['song'], filename):
                     logging.info(f"[process_track] handle_existing_file retornó False, omitiendo")
                     self.progress.emit(int((track_index + 1) / total_tracks * 100))
@@ -178,14 +190,29 @@ class DownloadWorker(QObject):
             return True
             
         elif file_action == 'ask':
-            # NOTA: El diálogo de preguntar no está implementado actualmente
-            # Por ahora, usar sobrescribir como fallback
-            logging.warning(f"[handle_existing_file] 'ask' seleccionado pero diálogo no implementado. Sobrescribiendo.")
-            try:
-                os.remove(filename)
-            except Exception as e:
-                logging.error(f"Error eliminando archivo: {e}")
-            return True
+            # Si "aplicar a todos" fue seleccionado previamente, usar esa acción
+            if self._batch_action is not None:
+                return self._apply_action(self._batch_action, filename)
+
+            # Emitir señal y esperar respuesta del hilo principal
+            self._file_exists_event.clear()
+            self.replace_response = None
+            self.ask_replace.emit(song, filename)
+
+            # Esperar con timeout para permitir cancelación
+            while not self._file_exists_event.is_set():
+                if self.cancel_event.is_set():
+                    return False
+                self._file_exists_event.wait(timeout=0.5)
+
+            if self.replace_response is None:
+                return False
+
+            action = self.replace_response.get('action', 'skip')
+            if self.replace_response.get('apply_to_all', False):
+                self._batch_action = action
+
+            return self._apply_action(action, filename)
             
         else:
             # Valor desconocido, sobrescribir por defecto
@@ -330,6 +357,29 @@ class DownloadWorker(QObject):
 
     def set_replace_response(self, response):
         self.replace_response = response
+
+    def set_file_exists_response(self, response_dict):
+        """Llamado desde el hilo principal con la respuesta del diálogo."""
+        self.replace_response = response_dict
+        self._file_exists_event.set()
+
+    def _apply_action(self, action, filename):
+        """Aplica la acción elegida por el usuario sobre un archivo existente."""
+        if action == 'overwrite':
+            logging.info(f"[_apply_action] Sobrescribiendo: {filename}")
+            try:
+                os.remove(filename)
+            except Exception as e:
+                logging.error(f"Error eliminando archivo: {e}")
+            return True
+        elif action == 'skip':
+            logging.info(f"[_apply_action] Omitiendo: {filename}")
+            return False
+        elif action == 'rename':
+            self._ask_renamed_filename = self.get_unique_filename(filename)
+            logging.info(f"[_apply_action] Renombrando a: {self._ask_renamed_filename}")
+            return True
+        return True
 
     def extract_genre(self, track, album_context=None):
         """

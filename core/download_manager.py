@@ -172,6 +172,12 @@ class DownloadManager(QObject, metaclass=Singleton):
             worker.converting.connect(lambda: progress_manager.converting())
         if hasattr(worker, 'applying_metadata'):
             worker.applying_metadata.connect(lambda: progress_manager.metadata())
+
+        # Señal de archivo existente (modo "ask")
+        if hasattr(worker, 'ask_replace'):
+            worker.ask_replace.connect(
+                lambda song, filename, w=worker: self._on_file_exists(w, song, filename)
+            )
         
         # Mostrar la barra al inicio con portada
         progress_manager.show(title, cover_url)
@@ -181,3 +187,20 @@ class DownloadManager(QObject, metaclass=Singleton):
         bar = progress_manager.get_progress_bar()
         if bar:
             bar.status_label.setText(status)
+
+    def _on_file_exists(self, worker, song_title, filename):
+        """Mostrar diálogo en el hilo principal cuando un archivo ya existe."""
+        from ui.components.file_exists_dialog import FileExistsDialog
+
+        dialog = FileExistsDialog(filename, song_title)
+        dialog.exec()
+
+        response = {
+            'action': dialog.action,
+            'apply_to_all': dialog.apply_to_all
+        }
+
+        try:
+            worker.set_file_exists_response(response)
+        except RuntimeError:
+            logging.warning("Worker eliminado antes de enviar respuesta del diálogo")

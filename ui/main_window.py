@@ -1,6 +1,7 @@
-from PyQt6.QtWidgets import (QMainWindow, QMessageBox, QWidget, 
-                             QHBoxLayout, QVBoxLayout, QStackedWidget, QLabel, 
-                            QTableWidget, QHeaderView, QTableWidgetItem)
+from PyQt6.QtWidgets import (QMainWindow, QMessageBox, QWidget,
+                             QHBoxLayout, QVBoxLayout, QStackedWidget, QLabel,
+                            QTableWidget, QHeaderView, QTableWidgetItem,
+                            QApplication)
 from PyQt6.QtGui import QFont
 import logging, os
 from downloader.utils import extract_id, load_download_history, save_download_history
@@ -38,6 +39,7 @@ class ModernApp(QMainWindow):
         self.setup_connections()
         self.load_stylesheet("dark_theme.qss")
         self.load_history()
+        self.center_on_screen()
     
     def init_ui(self):
         """Inicializar la interfaz de usuario."""
@@ -78,9 +80,9 @@ class ModernApp(QMainWindow):
         self.top_bar.add_action("⚙️", "settings", "Configuración rápida")
         right_layout.addWidget(self.top_bar)
         
-        # Stack de páginas
+        # Stack de páginas con fondo moderno
         self.stack = QStackedWidget()
-        self.stack.setStyleSheet("background-color: #121212;")
+        self.stack.setStyleSheet("background-color: #0A0E12;")
         right_layout.addWidget(self.stack)
         
         main_layout.addWidget(right_container)
@@ -292,6 +294,15 @@ class ModernApp(QMainWindow):
         toast.info("Desconectado de Spotify")
         logging.info("Spotify desconectado")
     
+    def center_on_screen(self):
+        """Centrar la ventana en la pantalla."""
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            window_geometry = self.frameGeometry()
+            window_geometry.moveCenter(screen_geometry.center())
+            self.move(window_geometry.topLeft())
+
     def on_quick_spotify_reconnect(self):
         """Manejar reconexión de Spotify desde configuraciones rápidas."""
         # Cambiar a la página de Spotify y cerrar el drawer

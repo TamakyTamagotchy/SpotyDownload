@@ -31,13 +31,13 @@ class Card(QFrame, AnimationMixin):
         self.setObjectName("card")
         self.setStyleSheet("""
             #card {
-                background-color: #2A2A2A;
-                border-radius: 12px;
-                border: 1px solid #3A3A3A;
+                background-color: rgba(22, 24, 29, 0.95);
+                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
             }
             #card:hover {
-                border: 1px solid #1DB954;
-                background-color: #2F2F2F;
+                border: 1px solid rgba(29, 185, 84, 0.5);
+                background-color: rgba(22, 24, 29, 1);
             }
         """)
     
@@ -107,35 +107,114 @@ class Card(QFrame, AnimationMixin):
 
 class ModernButton(QPushButton, AnimationMixin):
     """Botón moderno con variantes de estilo."""
-    
+
     PRIMARY = "primary"
     SECONDARY = "secondary"
     DANGER = "danger"
     GHOST = "ghost"
-    
+
+    _STYLES = {
+        "primary": """
+            QPushButton {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #1ED760, stop: 1 #1DB954);
+                color: #000000;
+                border: none;
+                border-radius: 10px;
+                padding: 12px 28px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #1FDF64, stop: 1 #1ED760);
+            }
+            QPushButton:pressed {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #169c46, stop: 1 #148A3D);
+            }
+            QPushButton:disabled {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #6B6B6B;
+            }
+        """,
+        "secondary": """
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+                padding: 12px 28px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+        """,
+        "danger": """
+            QPushButton {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #F15E6C, stop: 1 #E8384F);
+                color: #FFFFFF;
+                border: none;
+                border-radius: 10px;
+                padding: 12px 28px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #F47380, stop: 1 #F15E6C);
+            }
+            QPushButton:pressed {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #E8384F, stop: 1 #D6293A);
+            }
+        """,
+        "ghost": """
+            QPushButton {
+                background-color: transparent;
+                color: #1DB954;
+                border: 2px solid #1DB954;
+                border-radius: 10px;
+                padding: 12px 28px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(29, 185, 84, 0.15);
+                border-color: #1ED760;
+            }
+            QPushButton:pressed {
+                background-color: rgba(29, 185, 84, 0.25);
+            }
+        """
+    }
+
     def __init__(self, text, variant=PRIMARY, icon=None, parent=None, animated=True):
         super().__init__(text, parent)
         self._variant = variant
         self._animated = animated
-        
+
         self.setFont(QFont("Segoe UI", 11, QFont.Weight.DemiBold))
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setMinimumHeight(40)
-        
+
         if icon:
             self.setIcon(QIcon(icon))
             self.setIconSize(QSize(18, 18))
-        
+
         self.apply_style()
-        
+
         # Conectar animación al click si está habilitada
         if animated:
             self.clicked.connect(self._on_click_animation)
-    
+
     def _on_click_animation(self):
         """Efecto de pulso al hacer clic."""
         self.pulse_effect(scale=1.05, duration=150)
-    
+
     def slide_to(self, target_rect: QRect, duration=300):
         """
         Deslizar el botón hacia una nueva posición/tamaño.
@@ -144,118 +223,77 @@ class ModernButton(QPushButton, AnimationMixin):
         self._slide_anim = GeometryAnimator.slide_and_resize(self, target_rect, duration)
         self._slide_anim.start()
         return self._slide_anim
-    
+
     def apply_style(self):
-        styles = {
-            "primary": """
-                QPushButton {
-                    background-color: #1DB954;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    padding: 10px 24px;
-                }
-                QPushButton:hover {
-                    background-color: #1ED760;
-                }
-                QPushButton:pressed {
-                    background-color: #169c46;
-                }
-                QPushButton:disabled {
-                    background-color: #404040;
-                    color: #808080;
-                }
-            """,
-            "secondary": """
-                QPushButton {
-                    background-color: #3A3A3A;
-                    color: #E0E0E0;
-                    border: 1px solid #4A4A4A;
-                    border-radius: 8px;
-                    padding: 10px 24px;
-                }
-                QPushButton:hover {
-                    background-color: #4A4A4A;
-                    border-color: #5A5A5A;
-                }
-                QPushButton:pressed {
-                    background-color: #2A2A2A;
-                }
-            """,
-            "danger": """
-                QPushButton {
-                    background-color: #E53935;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    padding: 10px 24px;
-                }
-                QPushButton:hover {
-                    background-color: #EF5350;
-                }
-                QPushButton:pressed {
-                    background-color: #C62828;
-                }
-            """,
-            "ghost": """
-                QPushButton {
-                    background-color: transparent;
-                    color: #1DB954;
-                    border: 1px solid #1DB954;
-                    border-radius: 8px;
-                    padding: 10px 24px;
-                }
-                QPushButton:hover {
-                    background-color: rgba(29, 185, 84, 0.1);
-                }
-                QPushButton:pressed {
-                    background-color: rgba(29, 185, 84, 0.2);
-                }
-            """
-        }
-        self.setStyleSheet(styles.get(self._variant, styles["primary"]))
+        self.setStyleSheet(self._STYLES.get(self._variant, self._STYLES["primary"]))
 
 
 class ModernInput(QLineEdit, AnimationMixin):
     """Input moderno con placeholder animado y validación visual."""
-    
+
+    _BASE_STYLE = """
+        QLineEdit {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #FFFFFF;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 12px 18px;
+            selection-background-color: #1DB954;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border-color: #1DB954;
+            background-color: rgba(255, 255, 255, 0.08);
+        }
+        QLineEdit:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            background-color: rgba(255, 255, 255, 0.07);
+        }
+        QLineEdit::placeholder {
+            color: #6B6B6B;
+        }
+    """
+
+    _ERROR_STYLE = """
+        QLineEdit {
+            background-color: rgba(229, 57, 53, 0.05);
+            color: #FFFFFF;
+            border: 2px solid #E53935;
+            border-radius: 10px;
+            padding: 12px 18px;
+            selection-background-color: #E53935;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border-color: #F15E6C;
+            background-color: rgba(229, 57, 53, 0.08);
+        }
+        QLineEdit:hover {
+            border-color: #F15E6C;
+            background-color: rgba(229, 57, 53, 0.07);
+        }
+        QLineEdit::placeholder {
+            color: #6B6B6B;
+        }
+    """
+
     def __init__(self, placeholder="", parent=None):
         super().__init__(parent)
         self._original_geometry = None
-        
+
         self.setPlaceholderText(placeholder)
         self.setFont(QFont("Segoe UI", 11))
         self.setMinimumHeight(44)
-        
-        self.setStyleSheet("""
-            QLineEdit {
-                background-color: #2A2A2A;
-                color: #E0E0E0;
-                border: 2px solid #3A3A3A;
-                border-radius: 8px;
-                padding: 10px 16px;
-                selection-background-color: #1DB954;
-            }
-            QLineEdit:focus {
-                border-color: #1DB954;
-                background-color: #2F2F2F;
-            }
-            QLineEdit:hover {
-                border-color: #4A4A4A;
-            }
-            QLineEdit::placeholder {
-                color: #666666;
-            }
-        """)
-    
+        self.setStyleSheet(self._BASE_STYLE)
+
     def set_error(self, has_error=True, animate=True):
         """Mostrar estado de error visual con animación opcional."""
         if has_error:
-            self.setStyleSheet(self.styleSheet().replace("#3A3A3A", "#E53935").replace("#1DB954", "#E53935"))
+            self.setStyleSheet(self._ERROR_STYLE)
             if animate:
-                self.shake_effect(intensity=5, duration=300)  # Sacudida para indicar error
+                self.shake_effect(intensity=5, duration=300)
         else:
-            self.setStyleSheet(self.styleSheet().replace("#E53935", "#3A3A3A"))
+            self.setStyleSheet(self._BASE_STYLE)
 
 
 class IconButton(QPushButton):
@@ -335,13 +373,14 @@ class ProgressCard(Card):
         self.progress_bar.setFixedHeight(6)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
-                background-color: #3A3A3A;
+                background-color: rgba(255, 255, 255, 0.05);
                 border: none;
-                border-radius: 3px;
+                border-radius: 4px;
             }
             QProgressBar::chunk {
-                background-color: #1DB954;
-                border-radius: 3px;
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
+                                  stop: 0 #1DB954, stop: 1 #1ED760);
+                border-radius: 4px;
             }
         """)
         

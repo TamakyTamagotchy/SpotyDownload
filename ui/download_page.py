@@ -29,24 +29,50 @@ class DownloadPage(QWidget):
         header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(8)
-        
+        header_layout.setSpacing(12)
+
         title = QLabel("Descargar Música")
-        title.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        title.setFont(QFont("Segoe UI", 32, QFont.Weight.Bold))
         title.setStyleSheet("color: #FFFFFF;")
         header_layout.addWidget(title)
-        
+
         subtitle = QLabel("Pega un enlace de Spotify para comenzar la descarga")
-        subtitle.setFont(QFont("Segoe UI", 13))
-        subtitle.setStyleSheet("color: #888888;")
+        subtitle.setFont(QFont("Segoe UI", 14))
+        subtitle.setStyleSheet("color: #B3B3B3; margin-bottom: 4px;")
         header_layout.addWidget(subtitle)
-        
+
+        # Badge con información adicional
+        info_badge = QLabel("💡 Soporta tracks, álbumes y playlists completas")
+        info_badge.setFont(QFont("Segoe UI", 11))
+        info_badge.setStyleSheet("""
+            QLabel {
+                background-color: rgba(29, 185, 84, 0.1);
+                color: #1DB954;
+                padding: 8px 16px;
+                border-radius: 8px;
+                border: 1px solid rgba(29, 185, 84, 0.2);
+            }
+        """)
+        info_badge.setFixedWidth(400)
+        header_layout.addWidget(info_badge)
+
         layout.addWidget(header)
         
         # === Input Card ===
         input_card = Card()
-        input_card.setMinimumHeight(120)
-        input_card.setMaximumHeight(160)
+        input_card.setMinimumHeight(140)
+        input_card.setMaximumHeight(180)
+        input_card.setStyleSheet("""
+            #card {
+                background-color: rgba(22, 24, 29, 0.98);
+                border-radius: 16px;
+                border: 1px solid rgba(29, 185, 84, 0.2);
+            }
+            #card:hover {
+                border: 1px solid rgba(29, 185, 84, 0.4);
+                background-color: rgba(22, 24, 29, 1);
+            }
+        """)
         
         input_inner = QVBoxLayout()
         input_inner.setSpacing(12)
@@ -66,21 +92,9 @@ class DownloadPage(QWidget):
         self.add_btn.setMinimumHeight(44)
         self.add_btn.clicked.connect(self.add_to_queue)
         input_row.addWidget(self.add_btn)
-        
+
         input_inner.addLayout(input_row)
-        
-        # Quick actions
-        quick_row = QHBoxLayout()
-        quick_row.setSpacing(8)
-        
-        hint = QLabel("💡 Soporta: tracks, álbumes y playlists de Spotify")
-        hint.setFont(QFont("Segoe UI", 11))
-        hint.setStyleSheet("color: #666666;")
-        quick_row.addWidget(hint)
-        quick_row.addStretch()
-        
-        input_inner.addLayout(quick_row)
-        
+
         input_card.add_layout(input_inner)
         layout.addWidget(input_card)
         
@@ -89,14 +103,14 @@ class DownloadPage(QWidget):
         queue_header.action_clicked.connect(self.clear_queue)
         layout.addWidget(queue_header)
         
-        # Queue container
+        # Queue container con diseño mejorado
         queue_container = QFrame()
         queue_container.setObjectName("queueContainer")
         queue_container.setStyleSheet("""
             #queueContainer {
-                background-color: #1A1A1A;
-                border: 1px solid #2A2A2A;
-                border-radius: 12px;
+                background-color: rgba(22, 24, 29, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
             }
         """)
         
@@ -123,27 +137,28 @@ class DownloadPage(QWidget):
         self.queue_list.setMinimumHeight(300)
         queue_layout.addWidget(self.queue_list)
         
-        # Empty state
+        # Empty state mejorado
         self.empty_state = QWidget()
         empty_layout = QVBoxLayout(self.empty_state)
         empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+        empty_layout.setSpacing(16)
+
         empty_icon = QLabel("📥")
-        empty_icon.setFont(QFont("Segoe UI", 48))
+        empty_icon.setFont(QFont("Segoe UI Emoji", 64))
         empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_icon.setStyleSheet("color: #3A3A3A;")
+        empty_icon.setStyleSheet("color: rgba(255, 255, 255, 0.1);")
         empty_layout.addWidget(empty_icon)
-        
+
         empty_text = QLabel("No hay descargas en cola")
-        empty_text.setFont(QFont("Segoe UI", 14))
+        empty_text.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_text.setStyleSheet("color: #666666;")
+        empty_text.setStyleSheet("color: #FFFFFF; margin-top: 8px;")
         empty_layout.addWidget(empty_text)
-        
+
         empty_hint = QLabel("Pega un enlace de Spotify arriba para comenzar")
-        empty_hint.setFont(QFont("Segoe UI", 12))
+        empty_hint.setFont(QFont("Segoe UI", 13))
         empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_hint.setStyleSheet("color: #4A4A4A;")
+        empty_hint.setStyleSheet("color: #6B6B6B;")
         empty_layout.addWidget(empty_hint)
         
         queue_layout.addWidget(self.empty_state)

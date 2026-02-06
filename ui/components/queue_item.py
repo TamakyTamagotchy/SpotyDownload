@@ -44,7 +44,33 @@ class SpotifyInfoLoader(QThread):
 
 class QueueItemWidget(QFrame, AnimationMixin):
     """Widget moderno para items en la cola de descargas."""
-    
+
+    # Estilos de barra de progreso reutilizables
+    _PROGRESS_STYLE_DEFAULT = """
+        QProgressBar {{
+            background-color: {bg};
+            border: none;
+            border-radius: 4px;
+        }}
+        QProgressBar::chunk {{
+            background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
+                              stop: 0 #1DB954, stop: 0.5 #1ED760, stop: 1 #1FDF64);
+            border-radius: 4px;
+        }}
+    """
+
+    _PROGRESS_STYLE_SOLID = """
+        QProgressBar {{
+            background-color: {bg};
+            border: none;
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {chunk};
+            border-radius: 3px;
+        }}
+    """
+
     def __init__(self, task, parent=None):
         super().__init__(parent)
         self.task = task
@@ -54,16 +80,18 @@ class QueueItemWidget(QFrame, AnimationMixin):
         self._info_loader = None
         self._network_manager = None
         
-        # Colores fijos (Tema Oscuro)
+        # Colores fijos (Tema Oscuro Mejorado)
         self.colors = {
-            'bg': '#2A2A2A',
-            'bg_hover': '#333333',
-            'border': '#404040',
+            'bg': 'rgba(22, 24, 29, 0.95)',
+            'bg_hover': 'rgba(29, 185, 84, 0.08)',
+            'border': 'rgba(255, 255, 255, 0.08)',
+            'border_hover': 'rgba(29, 185, 84, 0.3)',
             'text_primary': '#FFFFFF',
             'text_secondary': '#B3B3B3',
             'accent': '#1DB954',
-            'progress_bg': '#404040',
-            'icon_bg': '#1DB954'
+            'progress_bg': 'rgba(255, 255, 255, 0.05)',
+            'icon_bg': '#1DB954',
+            'shadow': 'rgba(0, 0, 0, 0.3)'
         }
         
         self.setObjectName("queueItem")
@@ -78,23 +106,23 @@ class QueueItemWidget(QFrame, AnimationMixin):
     def setup_style(self):
         """Configurar estilos del widget con CSS profesional."""
         c = self.colors
-        
-        # Sombra suave
+
+        # Sombra más suave y elegante
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(15)
-        shadow.setColor(QColor(0, 0, 0, 30))
-        shadow.setOffset(0, 2)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 40))
+        shadow.setOffset(0, 4)
         self.setGraphicsEffect(shadow)
-        
+
         self.setStyleSheet(f"""
             #queueItem {{
                 background-color: {c['bg']};
-                border-radius: 12px;
+                border-radius: 16px;
                 border: 1px solid {c['border']};
             }}
             #queueItem:hover {{
                 background-color: {c['bg_hover']};
-                border-color: {c['accent']};
+                border-color: {c['border_hover']};
             }}
         """)
 
@@ -106,13 +134,14 @@ class QueueItemWidget(QFrame, AnimationMixin):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(16)
         
-        # Icono/Portada con fondo
+        # Icono/Portada con fondo moderno
         self.icon_container = QFrame()
-        self.icon_container.setFixedSize(48, 48)
+        self.icon_container.setFixedSize(56, 56)
         self.icon_container.setStyleSheet(f"""
             QFrame {{
-                background-color: {c['icon_bg']};
-                border-radius: 12px;
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #1ED760, stop: 1 #1DB954);
+                border-radius: 14px;
             }}
         """)
         
@@ -120,16 +149,16 @@ class QueueItemWidget(QFrame, AnimationMixin):
         icon_layout.setContentsMargins(0, 0, 0, 0)
         
         self.icon_label = QLabel("🎵")
-        self.icon_label.setFont(QFont("Segoe UI Emoji", 20))
+        self.icon_label.setFont(QFont("Segoe UI Emoji", 24))
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setStyleSheet("background: transparent; color: white;")
         icon_layout.addWidget(self.icon_label)
-        
+
         # Label para la portada (inicialmente oculto)
         self.cover_label = QLabel()
-        self.cover_label.setFixedSize(48, 48)
+        self.cover_label.setFixedSize(56, 56)
         self.cover_label.setScaledContents(True)
-        self.cover_label.setStyleSheet("border-radius: 12px;")
+        self.cover_label.setStyleSheet("border-radius: 14px;")
         self.cover_label.setVisible(False)
         
         layout.addWidget(self.icon_container)
@@ -170,19 +199,11 @@ class QueueItemWidget(QFrame, AnimationMixin):
         progress_container.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         
         self.progress_bar = QProgressBar()
-        self.progress_bar.setFixedSize(140, 6)
+        self.progress_bar.setFixedSize(150, 8)
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setStyleSheet(f"""
-            QProgressBar {{
-                background-color: {c['progress_bg']};
-                border: none;
-                border-radius: 3px;
-            }}
-            QProgressBar::chunk {{
-                background-color: {c['accent']};
-                border-radius: 3px;
-            }}
-        """)
+        self.progress_bar.setStyleSheet(
+            self._PROGRESS_STYLE_DEFAULT.format(bg=c['progress_bg'])
+        )
         progress_container.addWidget(self.progress_bar)
         
         self.progress_text = QLabel("0%")
@@ -259,18 +280,9 @@ class QueueItemWidget(QFrame, AnimationMixin):
         self.pulse_effect(scale=1.02, duration=300)
         
         # Feedback visual final
-        self.progress_bar.setStyleSheet(f"""
-            QProgressBar {{
-                background-color: {c['accent']};
-                border: none;
-                border-radius: 3px;
-                opacity: 0.5;
-            }}
-            QProgressBar::chunk {{
-                background-color: {c['accent']};
-                border-radius: 3px;
-            }}
-        """)
+        self.progress_bar.setStyleSheet(
+            self._PROGRESS_STYLE_SOLID.format(bg=c['accent'], chunk=c['accent'])
+        )
 
     def on_error(self, err):
         """Callback en error."""
@@ -286,17 +298,9 @@ class QueueItemWidget(QFrame, AnimationMixin):
         # Animación de sacudida
         self.shake_effect(intensity=6, duration=350)
         
-        self.progress_bar.setStyleSheet(f"""
-            QProgressBar {{
-                background-color: {c['progress_bg']};
-                border: none;
-                border-radius: 3px;
-            }}
-            QProgressBar::chunk {{
-                background-color: #E53935;
-                border-radius: 3px;
-            }}
-        """)
+        self.progress_bar.setStyleSheet(
+            self._PROGRESS_STYLE_SOLID.format(bg=c['progress_bg'], chunk='#E53935')
+        )
 
     def cancel_task(self):
         """Cancelar la tarea."""
@@ -369,9 +373,9 @@ class QueueItemWidget(QFrame, AnimationMixin):
             data = reply.readAll()
             pixmap = QPixmap()
             if pixmap.loadFromData(data):
-                # Escalar y mostrar la imagen
+                # Escalar y mostrar la imagen con mejor calidad
                 scaled_pixmap = pixmap.scaled(
-                    48, 48, 
+                    56, 56,
                     Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                     Qt.TransformationMode.SmoothTransformation
                 )

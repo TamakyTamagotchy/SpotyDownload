@@ -139,7 +139,12 @@ class ConfigPage(QWidget):
         
         # Opciones
         self.exists_group = QButtonGroup(self)
-        
+
+        self.exists_ask = QRadioButton("Preguntar (mostrar diálogo de confirmación)")
+        self.exists_ask.setToolTip("Muestra un diálogo preguntando qué hacer con cada archivo existente")
+        self.exists_group.addButton(self.exists_ask, 3)
+        exists_layout.addWidget(self.exists_ask)
+
         self.exists_overwrite = QRadioButton("Sobrescribir (reemplazar el archivo existente)")
         self.exists_overwrite.setToolTip("Siempre reemplaza el archivo existente con la nueva descarga")
         self.exists_group.addButton(self.exists_overwrite, 0)
@@ -235,12 +240,12 @@ class ConfigPage(QWidget):
         
         # Cargar acción para archivos existentes
         file_action = self.settings_manager.get_file_exists_action()
-        action_map = {'overwrite': self.exists_overwrite, 'skip': self.exists_skip, 
-                      'rename': self.exists_rename}
+        action_map = {'ask': self.exists_ask, 'overwrite': self.exists_overwrite,
+                      'skip': self.exists_skip, 'rename': self.exists_rename}
         if file_action in action_map:
             action_map[file_action].setChecked(True)
         else:
-            self.exists_overwrite.setChecked(True)  # Default
+            self.exists_ask.setChecked(True)  # Default
         
         # Calidad de búsqueda
         quality = self.settings_manager.get("default_quality")
@@ -285,7 +290,9 @@ class ConfigPage(QWidget):
             self.settings_manager.set("flac_compression", compression)
             
             # Guardar acción para archivos existentes
-            if self.exists_overwrite.isChecked():
+            if self.exists_ask.isChecked():
+                self.settings_manager.set("file_exists_action", "ask")
+            elif self.exists_overwrite.isChecked():
                 self.settings_manager.set("file_exists_action", "overwrite")
             elif self.exists_skip.isChecked():
                 self.settings_manager.set("file_exists_action", "skip")

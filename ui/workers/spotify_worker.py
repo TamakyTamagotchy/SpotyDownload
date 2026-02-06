@@ -1,4 +1,4 @@
-﻿from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal
 import logging, os, queue, threading
 from downloader.utils import search_music_services, download_song, sanitize_filename
 from downloader.metadata import update_mp3_metadata
@@ -10,9 +10,10 @@ class SpotifyDownloadWorker(QThread):
     error_occurred = pyqtSignal(str)
     progress_updated = pyqtSignal(int)
     track_completed = pyqtSignal(dict)
-    status_changed = pyqtSignal(str)  # Nueva seÃ±al para cambios de estado
-    converting = pyqtSignal()  # Nueva seÃ±al para conversiÃ³n
-    applying_metadata = pyqtSignal()  # Nueva seÃ±al para metadatos
+    status_changed = pyqtSignal(str)
+    converting = pyqtSignal()
+    applying_metadata = pyqtSignal()
+    ask_replace = pyqtSignal(str, str)
 
     def __init__(self, songs, download_folder, quality, track_widget=None):
         super().__init__()
@@ -22,6 +23,10 @@ class SpotifyDownloadWorker(QThread):
         self.settings = SettingsManager()
         self.track_widget = track_widget
         self.cancel_requested = False
+        self.replace_response = None
+        self._file_exists_event = threading.Event()
+        self._batch_action = None
+        self._ask_renamed_filename = None
 
     def run(self):
         try:
@@ -68,7 +73,7 @@ class SpotifyDownloadWorker(QThread):
             # Verificar si el archivo ya existe
             if os.path.exists(filename):
                 file_action = self.settings.get_file_exists_action()
-                
+
                 if file_action == 'skip':
                     logging.info(f"Archivo ya existe (omitiendo): {filename}")
                     self.track_completed.emit({
@@ -87,7 +92,13 @@ class SpotifyDownloadWorker(QThread):
                         os.remove(filename)
                     except Exception as e:
                         logging.error(f"Error eliminando archivo: {e}")
-                # Si es 'ask', por simplicidad en canciones individuales, sobrescribimos
+                elif file_action == 'ask':
+                    result = self._handle_ask(title, filename)
+                    if not result:
+                        return
+                    if self._ask_renamed_filename:
+                        filename = self._ask_renamed_filename
+                        self._ask_renamed_filename = None
                 else:
                     logging.info(f"Sobrescribiendo (default): {filename}")
                     try:
@@ -150,11 +161,11 @@ class SpotifyDownloadWorker(QThread):
                 logging.info(f"CanciÃ³n descargada exitosamente: {filename}")
             else:
                 raise Exception("El archivo no se creÃ³ correctamente")
-                
+
         except Exception as e:
             logging.error(f"Error descargando canciÃ³n: {e}")
             self.error_occurred.emit(str(e))
-    
+
     def _apply_flac_metadata(self, filepath, song):
         """Aplicar metadatos a archivo FLAC"""
         try:
@@ -190,7 +201,53 @@ class SpotifyDownloadWorker(QThread):
     def cancel(self):
         """Cancelar descarga"""
         self.cancel_requested = True
-    
+
+    def set_file_exists_response(self, response_dict):
+        """Llamado desde el hilo principal con la respuesta del diálogo."""
+        self.replace_response = response_dict
+        self._file_exists_event.set()
+
+    def _handle_ask(self, song_title, filename):
+        """Manejar el caso 'ask' emitiendo señal y esperando respuesta."""
+        if self._batch_action is not None:
+            return self._apply_action(self._batch_action, filename)
+
+        self._file_exists_event.clear()
+        self.replace_response = None
+        self.ask_replace.emit(song_title, filename)
+
+        while not self._file_exists_event.is_set():
+            if self.cancel_requested:
+                return False
+            self._file_exists_event.wait(timeout=0.5)
+
+        if self.replace_response is None:
+            return False
+
+        action = self.replace_response.get('action', 'skip')
+        if self.replace_response.get('apply_to_all', False):
+            self._batch_action = action
+
+        return self._apply_action(action, filename)
+
+    def _apply_action(self, action, filename):
+        """Aplica la acción elegida por el usuario sobre un archivo existente."""
+        if action == 'overwrite':
+            logging.info(f"[_apply_action] Sobrescribiendo: {filename}")
+            try:
+                os.remove(filename)
+            except Exception as e:
+                logging.error(f"Error eliminando archivo: {e}")
+            return True
+        elif action == 'skip':
+            logging.info(f"[_apply_action] Omitiendo: {filename}")
+            return False
+        elif action == 'rename':
+            self._ask_renamed_filename = self._get_unique_filename(filename)
+            logging.info(f"[_apply_action] Renombrando a: {self._ask_renamed_filename}")
+            return True
+        return True
+
     def _get_unique_filename(self, filename):
         """Genera un nombre de archivo único agregando (1), (2), etc."""
         if not os.path.exists(filename):
@@ -224,6 +281,9 @@ class SpotifyPlaylistDownloadWorker(QThread):
         self.parent = parent
         self.cancel_requested = False
         self.replace_response = None
+        self._file_exists_event = threading.Event()
+        self._batch_action = None
+        self._ask_renamed_filename = None
 
     def run(self):
         try:
@@ -301,13 +361,12 @@ class SpotifyPlaylistDownloadWorker(QThread):
                     except Exception as e:
                         logging.error(f"Error eliminando archivo: {e}")
                 elif file_action == 'ask':
-                    # NOTA: El diálogo de preguntar no está implementado
-                    # Por ahora, usar sobrescribir como fallback
-                    logging.warning(f"[SpotifyPlaylistDownloadWorker] 'ask' no implementado, sobrescribiendo")
-                    try:
-                        os.remove(filename)
-                    except Exception as e:
-                        logging.error(f"Error eliminando archivo: {e}")
+                    result = self._handle_ask(title, filename)
+                    if not result:
+                        return
+                    if self._ask_renamed_filename:
+                        filename = self._ask_renamed_filename
+                        self._ask_renamed_filename = None
                 else:
                     # Valor desconocido, sobrescribir
                     logging.warning(f"Acción desconocida '{file_action}', sobrescribiendo")
@@ -358,9 +417,55 @@ class SpotifyPlaylistDownloadWorker(QThread):
         """Establecer respuesta para reemplazar archivo"""
         self.replace_response = response
 
+    def set_file_exists_response(self, response_dict):
+        """Llamado desde el hilo principal con la respuesta del diálogo."""
+        self.replace_response = response_dict
+        self._file_exists_event.set()
+
     def cancel(self):
         """Cancelar descarga"""
         self.cancel_requested = True
+
+    def _handle_ask(self, song_title, filename):
+        """Manejar el caso 'ask' emitiendo señal y esperando respuesta."""
+        if self._batch_action is not None:
+            return self._apply_action(self._batch_action, filename)
+
+        self._file_exists_event.clear()
+        self.replace_response = None
+        self.ask_replace.emit(song_title, filename)
+
+        while not self._file_exists_event.is_set():
+            if self.cancel_requested:
+                return False
+            self._file_exists_event.wait(timeout=0.5)
+
+        if self.replace_response is None:
+            return False
+
+        action = self.replace_response.get('action', 'skip')
+        if self.replace_response.get('apply_to_all', False):
+            self._batch_action = action
+
+        return self._apply_action(action, filename)
+
+    def _apply_action(self, action, filename):
+        """Aplica la acción elegida por el usuario sobre un archivo existente."""
+        if action == 'overwrite':
+            logging.info(f"[_apply_action] Sobrescribiendo: {filename}")
+            try:
+                os.remove(filename)
+            except Exception as e:
+                logging.error(f"Error eliminando archivo: {e}")
+            return True
+        elif action == 'skip':
+            logging.info(f"[_apply_action] Omitiendo: {filename}")
+            return False
+        elif action == 'rename':
+            self._ask_renamed_filename = self._get_unique_filename(filename)
+            logging.info(f"[_apply_action] Renombrando a: {self._ask_renamed_filename}")
+            return True
+        return True
     
     def _get_unique_filename(self, filename):
         """Genera un nombre de archivo único agregando (1), (2), etc."""

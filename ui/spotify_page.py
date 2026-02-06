@@ -14,6 +14,41 @@ class SpotifyAuthError(Exception):
     pass
 
 class SpotifyPage(QWidget):
+
+    # Estilo compartido para inputs de credenciales
+    _INPUT_STYLE = """
+        QLineEdit {
+            padding: 12px 16px;
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            color: #FFFFFF;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border-color: #1DB954;
+            background-color: rgba(255, 255, 255, 0.08);
+        }
+    """
+
+    # Plantilla para estilos de estado de conexión
+    _STATUS_TEMPLATE = """
+        QLabel {{
+            padding: 14px 20px;
+            border-radius: 10px;
+            background-color: rgba({rgb}, 0.15);
+            color: {color};
+            font-weight: 600;
+            border: 1px solid rgba({rgb}, 0.3);
+        }}
+    """
+
+    _STATUS_COLORS = {
+        "green":  {"rgb": "29, 185, 84",  "color": "#1ED760"},
+        "red":    {"rgb": "241, 94, 108", "color": "#F15E6C"},
+        "orange": {"rgb": "255, 167, 38", "color": "#FFA726"},
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
@@ -21,7 +56,7 @@ class SpotifyPage(QWidget):
         self.sp_oauth = None
         self.session_timer = QTimer()
         self.session_timer.timeout.connect(self.check_session_validity)
-        
+
         self.initUI()
         self.load_config()
         # Auto-conectar después de un pequeño delay para que la UI esté lista
@@ -29,31 +64,50 @@ class SpotifyPage(QWidget):
     
     def initUI(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-        
-        # Título principal
-        title = QLabel("🎧 Spotify Integration")
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        # Título principal con diseño moderno
+        title_container = QWidget()
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(8)
+
+        title = QLabel("🎧 Integración con Spotify")
+        title.setFont(QFont("Segoe UI", 28, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("color: #1DB954; margin: 10px;")
-        layout.addWidget(title)
+        title.setStyleSheet("""
+            QLabel {
+                color: #1ED760;
+                margin: 20px;
+            }
+        """)
+        title_layout.addWidget(title)
+
+        subtitle = QLabel("Conecta tu cuenta de Spotify para acceder a tu biblioteca")
+        subtitle.setFont(QFont("Segoe UI", 13))
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet("color: #B3B3B3; margin-bottom: 10px;")
+        title_layout.addWidget(subtitle)
+
+        layout.addWidget(title_container)
         
         # Sección de configuración (solo esta sección)
         self.setup_config_section(layout)
         
-        # Mensaje informativo después de conectar
+        # Mensaje informativo después de conectar - diseño mejorado
         self.info_message = QLabel("")
         self.info_message.setVisible(False)
+        self.info_message.setFont(QFont("Segoe UI", 12))
+        self.info_message.setWordWrap(True)
+        self.info_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.info_message.setStyleSheet("""
             QLabel {
-                background-color: #2b2b2b;
-                padding: 20px;
-                border-radius: 8px;
-                border: 2px solid #1DB954;
-                color: #1DB954;
-                font-size: 14px;
-                font-weight: bold;
-                text-align: center;
+                background-color: rgba(29, 185, 84, 0.12);
+                padding: 24px;
+                border-radius: 12px;
+                border: 1px solid rgba(29, 185, 84, 0.3);
+                color: #FFFFFF;
             }
         """)
         layout.addWidget(self.info_message)
@@ -62,9 +116,28 @@ class SpotifyPage(QWidget):
         layout.addStretch()
     
     def setup_config_section(self, parent_layout):
-        """Configurar sección de autenticación"""
+        """Configurar sección de autenticación con diseño moderno."""
         config_group = QGroupBox("🔐 Configuración de Spotify")
+        config_group.setFont(QFont("Segoe UI", 14, QFont.Weight.DemiBold))
+        config_group.setStyleSheet("""
+            QGroupBox {
+                background-color: rgba(22, 24, 29, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 16px;
+                margin-top: 16px;
+                padding: 24px;
+                color: #FFFFFF;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 8px 16px;
+                color: #FFFFFF;
+                background-color: transparent;
+            }
+        """)
         config_layout = QVBoxLayout(config_group)
+        config_layout.setSpacing(20)
         
         # Instrucciones mejoradas
         instructions = QLabel("""
@@ -80,53 +153,114 @@ class SpotifyPage(QWidget):
         instructions.setOpenExternalLinks(True)
         instructions.setWordWrap(True)
         instructions.setStyleSheet("""
-            QLabel { 
-                background-color: #2b2b2b; 
-                padding: 15px; 
-                border-radius: 8px; 
-                border: 1px solid #1DB954;
+            QLabel {
+                background-color: rgba(29, 185, 84, 0.08);
+                padding: 20px;
+                border-radius: 12px;
+                border: 1px solid rgba(29, 185, 84, 0.2);
+                color: #FFFFFF;
+            }
+            QLabel a {
+                color: #1ED760;
+                text-decoration: none;
+                font-weight: 600;
+            }
+            QLabel a:hover {
+                text-decoration: underline;
             }
         """)
         config_layout.addWidget(instructions)
         
         # Campos de entrada mejorados
+        input_label_style = "color: #FFFFFF; font-weight: 600; margin-top: 8px;"
+
+        client_id_label = QLabel("Client ID:")
+        client_id_label.setStyleSheet(input_label_style)
+        config_layout.addWidget(client_id_label)
+
         self.client_id_input = QLineEdit()
-        self.client_id_input.setPlaceholderText("Client ID de Spotify")
-        self.client_id_input.setStyleSheet("padding: 8px; border-radius: 4px;")
-        config_layout.addWidget(QLabel("Client ID:"))
+        self.client_id_input.setPlaceholderText("Ingresa tu Client ID de Spotify")
+        self.client_id_input.setMinimumHeight(44)
+        self.client_id_input.setStyleSheet(self._INPUT_STYLE)
         config_layout.addWidget(self.client_id_input)
-        
+
+        client_secret_label = QLabel("Client Secret:")
+        client_secret_label.setStyleSheet(input_label_style)
+        config_layout.addWidget(client_secret_label)
+
         self.client_secret_input = QLineEdit()
-        self.client_secret_input.setPlaceholderText("Client Secret de Spotify")
+        self.client_secret_input.setPlaceholderText("Ingresa tu Client Secret de Spotify")
         self.client_secret_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.client_secret_input.setStyleSheet("padding: 8px; border-radius: 4px;")
-        config_layout.addWidget(QLabel("Client Secret:"))
+        self.client_secret_input.setMinimumHeight(44)
+        self.client_secret_input.setStyleSheet(self._INPUT_STYLE)
         config_layout.addWidget(self.client_secret_input)
         
-        # Botones de control
+        # Botones de control con diseño moderno
         buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(12)
+
         self.connect_button = QPushButton("🔗 Conectar con Spotify")
+        self.connect_button.setMinimumHeight(48)
+        self.connect_button.setFont(QFont("Segoe UI", 13, QFont.Weight.DemiBold))
         self.connect_button.clicked.connect(self.connect_to_spotify)
         self.connect_button.setStyleSheet("""
             QPushButton {
-                background-color: #1DB954;
-                color: white;
-                padding: 10px;
-                border-radius: 6px;
-                font-weight: bold;
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #1ED760, stop: 1 #1DB954);
+                color: #000000;
+                padding: 14px 28px;
+                border-radius: 10px;
+                font-weight: 600;
             }
             QPushButton:hover {
-                background-color: #1ed760;
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #1FDF64, stop: 1 #1ED760);
+            }
+            QPushButton:pressed {
+                background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                  stop: 0 #169c46, stop: 1 #148A3D);
             }
         """)
-        
-        self.help_button = QPushButton("❓ Ayuda")
-        self.help_button.clicked.connect(self.show_help)
-        self.help_button.setFixedWidth(80)
-        
+
         self.disconnect_button = QPushButton("🔌 Desconectar")
+        self.disconnect_button.setMinimumHeight(48)
+        self.disconnect_button.setFont(QFont("Segoe UI", 13, QFont.Weight.DemiBold))
         self.disconnect_button.clicked.connect(self.disconnect_spotify)
         self.disconnect_button.setVisible(False)
+        self.disconnect_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #FFFFFF;
+                padding: 14px 28px;
+                border-radius: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+        """)
+
+        self.help_button = QPushButton("❓ Ayuda")
+        self.help_button.setMinimumHeight(48)
+        self.help_button.setFont(QFont("Segoe UI", 13, QFont.Weight.DemiBold))
+        self.help_button.clicked.connect(self.show_help)
+        self.help_button.setFixedWidth(100)
+        self.help_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #1DB954;
+                padding: 14px 20px;
+                border-radius: 10px;
+                border: 2px solid #1DB954;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(29, 185, 84, 0.15);
+                border-color: #1ED760;
+            }
+        """)
         
         buttons_layout.addWidget(self.connect_button)
         buttons_layout.addWidget(self.disconnect_button)
@@ -134,13 +268,17 @@ class SpotifyPage(QWidget):
         
         # Status de conexión mejorado
         self.connection_status = QLabel("🔴 No conectado")
+        self.connection_status.setFont(QFont("Segoe UI", 12, QFont.Weight.DemiBold))
+        self.connection_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.connection_status.setMinimumHeight(52)
         self.connection_status.setStyleSheet("""
             QLabel {
-                padding: 8px;
-                border-radius: 4px;
-                background-color: #333;
-                color: white;
-                font-weight: bold;
+                padding: 14px 20px;
+                border-radius: 10px;
+                background-color: rgba(241, 94, 108, 0.15);
+                color: #F15E6C;
+                font-weight: 600;
+                border: 1px solid rgba(241, 94, 108, 0.3);
             }
         """)
         
@@ -453,23 +591,12 @@ class SpotifyPage(QWidget):
             self.disconnect_spotify()
     
     def update_connection_status(self, text, color):
-        """Actualizar status de conexión"""
-        colors = {
-            "green": "#4CAF50",
-            "red": "#F44336", 
-            "orange": "#FF9800"
-        }
-        
+        """Actualizar status de conexión con diseño moderno."""
         self.connection_status.setText(text)
-        self.connection_status.setStyleSheet(f"""
-            QLabel {{
-                padding: 8px;
-                border-radius: 4px;
-                background-color: {colors.get(color, '#333')};
-                color: white;
-                font-weight: bold;
-            }}
-        """)
+        colors = self._STATUS_COLORS.get(color, self._STATUS_COLORS["red"])
+        self.connection_status.setStyleSheet(
+            self._STATUS_TEMPLATE.format(**colors)
+        )
     
     def show_help(self):
         """Mostrar ayuda para configurar Spotify"""

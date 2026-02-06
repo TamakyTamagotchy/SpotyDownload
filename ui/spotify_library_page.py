@@ -261,54 +261,12 @@ class SpotifyLibraryPage(QWidget):
         self.download_info.setFont(QFont("Segoe UI", 10))
         self.download_info.setStyleSheet("color: #666666;")
         
-        # Botón de descargar toda la playlist - compacto
-        self.download_all_button = QPushButton("  Descargar Playlist")
+        # Botón de descargar toda la playlist
+        self.download_all_button = QPushButton("↓  Descargar Todo")
         self.download_all_button.setEnabled(False)
         self.download_all_button.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         self.download_all_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.download_all_button.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_DialogSaveButton)) # Fallback icon
-        # Usar un contenedor con icono personalizado si es posible, aquí usaremos estilo CSS puro para el icono
-        self.download_all_button.setText("   Descargar Todo")
-        
         self.download_all_button.clicked.connect(self.download_all_tracks)
-        self.download_all_button.setStyleSheet("""
-            QPushButton {
-                background-color: #1DB954;
-                color: white;
-                padding: 10px 24px;
-                border-radius: 20px;
-                border: none;
-                text-align: center;
-                font-family: 'Segoe UI', sans-serif;
-                letter-spacing: 0.5px;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-                transform: scale(1.02);
-                box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
-            }
-            QPushButton:pressed {
-                background-color: #1aa34a;
-                transform: scale(0.98);
-            }
-            QPushButton:disabled {
-                background-color: #2A2A2A;
-                color: #555555;
-                box-shadow: none;
-            }
-            /* Icono simulado con unicode */
-            QPushButton::before {
-                content: "↓";
-                font-weight: bold;
-                margin-right: 8px;
-                font-size: 16px;
-            }
-        """)
-        
-        # Eliminar el texto anterior para que funcione el CSS ::before content trick si fuera web, 
-        # pero en Qt stylesheets ::before no funciona igual para contenido.
-        # Vamos a usar texto directo con unicode para el icono
-        self.download_all_button.setText("↓  Descargar Todo")
         self.download_all_button.setStyleSheet("""
             QPushButton {
                 background-color: #1DB954;
@@ -319,14 +277,13 @@ class SpotifyLibraryPage(QWidget):
                 font-family: 'Segoe UI', sans-serif;
                 font-size: 14px;
                 font-weight: 700;
-                letter-spacing: 0.5px;
             }
             QPushButton:hover {
                 background-color: #1ed760;
             }
             QPushButton:pressed {
                 background-color: #1aa34a;
-                padding-top: 12px; /* Efecto de presionado sutil */
+                padding-top: 12px;
                 padding-bottom: 8px;
             }
             QPushButton:disabled {
@@ -639,7 +596,6 @@ class SpotifyLibraryPage(QWidget):
                 background-color: transparent;
                 color: #FFFFFF;
                 border: 2px solid #FFFFFF;
-                transform: scale(1.05);
             }
             QPushButton:pressed {
                 background-color: rgba(255, 255, 255, 0.1);
