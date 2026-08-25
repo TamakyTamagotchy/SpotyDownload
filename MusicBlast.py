@@ -18,8 +18,8 @@ if sys.platform == 'win32':
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, QCoreApplication
-from PyQt6.QtGui import QFont, QPalette, QColor
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 
 
 def setup_logging() -> None:

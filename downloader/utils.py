@@ -2,6 +2,7 @@ import os, logging, re, time, requests, eyed3, yt_dlp
 from PIL import Image
 from io import BytesIO
 from .search import search_song
+from .spotify_id import extract_id as _extract_spotify_id
 from config.settings_manager import SettingsManager
 
 HISTORY_FILE = "download_history.txt"
@@ -316,12 +317,7 @@ def _get_audio_postprocessors(bitrate: str = None) -> list:
 
 
 def extract_id(link):
-    pattern = re.compile(r'(?:playlist|track)/(\w+)')
-    match = pattern.search(link)
-    if match:
-        return match.group(1)
-    else:
-        return link
+    return _extract_spotify_id(link)
 
 def sanitize_filename(title, artist=None, album=None, fallback_method=True):
     """

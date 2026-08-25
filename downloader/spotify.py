@@ -10,11 +10,12 @@ Requiere credenciales válidas en spotify_credentials.json:
     - genius_api_token: Token de Genius API (opcional)
 """
 
-import spotipy, os, re, logging, json
+import spotipy, os, logging, json
 from typing import Optional, Dict, Any, Union
 from functools import lru_cache
 from spotipy.oauth2 import SpotifyClientCredentials
 from spotipy.exceptions import SpotifyException
+from .spotify_id import parse_spotify_reference
 
 # Configuración de logging
 logger = logging.getLogger(__name__)
@@ -142,23 +143,30 @@ def _parse_spotify_url(id_or_url: str) -> tuple[Optional[str], Optional[str]]:
     Returns:
         Tupla (tipo, id) donde tipo puede ser 'playlist', 'album' o 'track'
     """
-    # Patrones para diferentes formatos de URL de Spotify
-    patterns = [
-        r"(?:https?://)?(?:open\.)?spotify\.com/(playlist|track|album)/([a-zA-Z0-9]+)",
-        r"spotify:(playlist|track|album):([a-zA-Z0-9]+)",
-        r"(playlist|track|album)/([a-zA-Z0-9]+)",
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, id_or_url)
-        if match:
-            return match.group(1), match.group(2)
-    
-    # Si es un ID directo (22 caracteres base62)
-    if re.match(r'^[a-zA-Z0-9]{22}$', id_or_url):
-        return "track", id_or_url
-    
-    return None, None
+    return parse_spotify_reference(id_or_url)
+
+
+def _fetch_playlist_with_all_tracks(client: spotipy.Spotify, playlist_id: str) -> Optional[Dict[str, Any]]:
+    """Obtiene una playlist y pagina todas sus canciones."""
+    obj = client.playlist(playlist_id)
+    if obj and 'tracks' in obj:
+        tracks = obj['tracks']
+        while tracks.get('next'):
+            more_tracks = client.next(tracks)
+            tracks['items'].extend(more_tracks['items'])
+            tracks['next'] = more_tracks.get('next')
+    return obj
+
+
+def _fetch_object_by_type(client: spotipy.Spotify, tipo: str, real_id: str) -> Optional[Dict[str, Any]]:
+    """Obtiene un objeto de Spotify según tipo."""
+    if tipo == "playlist":
+        return _fetch_playlist_with_all_tracks(client, real_id)
+    if tipo == "album":
+        return client.album(real_id)
+    if tipo == "track":
+        return client.track(real_id)
+    return None
 
 
 def get_spotify_item(id_or_url: Union[str, Any]) -> Optional[Dict[str, Any]]:
@@ -192,27 +200,31 @@ def get_spotify_item(id_or_url: Union[str, Any]) -> Optional[Dict[str, Any]]:
             return None
 
         obj = None
-        if tipo == "playlist":
-            obj = client.playlist(real_id)
-            # Cargar todas las canciones si hay más de 100
-            if obj and 'tracks' in obj:
-                tracks = obj['tracks']
-                while tracks.get('next'):
-                    more_tracks = client.next(tracks)
-                    tracks['items'].extend(more_tracks['items'])
-                    tracks['next'] = more_tracks.get('next')
-                    
-        elif tipo == "album":
-            obj = client.album(real_id)
-            
-        elif tipo == "track":
-            obj = client.track(real_id)
+        resolved_type = tipo
+
+        # Un ID base62 de 22 caracteres no contiene tipo. Intentar resolverlo.
+        if tipo == "unknown":
+            for candidate_type in ("track", "playlist", "album"):
+                try:
+                    candidate_obj = _fetch_object_by_type(client, candidate_type, real_id)
+                    if candidate_obj is not None:
+                        obj = candidate_obj
+                        resolved_type = candidate_type
+                        logger.info(f"ID {real_id} resuelto como {candidate_type}")
+                        break
+                except SpotifyException as candidate_error:
+                    if candidate_error.http_status == 404:
+                        continue
+                    raise
         else:
-            logger.error(f"Tipo de Spotify no soportado: {tipo}")
+            obj = _fetch_object_by_type(client, tipo, real_id)
+
+        if resolved_type not in ("playlist", "album", "track"):
+            logger.error(f"Tipo de Spotify no soportado: {resolved_type}")
             return None
 
         if obj is not None:
-            obj['__type'] = tipo
+            obj['__type'] = resolved_type
             return obj
         else:
             logger.error(f"No se pudo obtener el objeto de Spotify para: {id_or_url}")
