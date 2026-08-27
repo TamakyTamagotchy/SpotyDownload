@@ -1,3 +1,4 @@
+#ui/workers/spotify_worker.py
 from PyQt6.QtCore import QThread, pyqtSignal
 import logging, os, queue, threading
 from downloader.utils import search_music_services, download_song, sanitize_filename

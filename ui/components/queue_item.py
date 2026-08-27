@@ -4,8 +4,6 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QCursor, QColor, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from .animations import AnimationMixin
-from config.settings_manager import SettingsManager
-
 
 class SpotifyInfoLoader(QThread):
     """Thread para cargar información de Spotify sin bloquear la UI."""

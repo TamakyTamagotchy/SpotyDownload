@@ -1,3 +1,4 @@
+#ui/main_window.py
 from PyQt6.QtWidgets import (QMainWindow, QMessageBox, QWidget,
                              QHBoxLayout, QVBoxLayout, QStackedWidget, QLabel,
                             QTableWidget, QHeaderView, QTableWidgetItem,
@@ -6,8 +7,8 @@ from PyQt6.QtGui import QFont
 import logging, os
 from downloader.utils import extract_id, load_download_history, save_download_history
 from downloader.spotify import get_spotify_item
-from ui.spotify_page import SpotifyPage
-from ui.spotify_library_page import SpotifyLibraryPage
+#from ui.spotify_page import SpotifyPage
+#from ui.spotify_library_page import SpotifyLibraryPage
 from ui.config_page import ConfigPage
 from ui.download_page import DownloadPage
 from ui.components.navigation import SideNavigation, TopBar
@@ -59,8 +60,8 @@ class ModernApp(QMainWindow):
         # Navegación lateral
         self.side_nav = SideNavigation()
         self.side_nav.add_item("📥", "Descargas")
-        self.side_nav.add_item("🎧", "Spotify")
-        self.side_nav.add_item("📚", "Biblioteca")
+#        self.side_nav.add_item("🎧", "Spotify")
+#        self.side_nav.add_item("📚", "Biblioteca")
         self.side_nav.add_separator("Más")
         self.side_nav.add_item("📋", "Historial")
         self.side_nav.add_item("⚙️", "Configuración")
@@ -108,12 +109,12 @@ class ModernApp(QMainWindow):
         self.download_page = DownloadPage(self)
         
         # Página de Spotify
-        self.spotify_page = SpotifyPage(self)
-        self.stack.addWidget(self.spotify_page)
+#        self.spotify_page = SpotifyPage(self)
+#        self.stack.addWidget(self.spotify_page)
         
         # Página de biblioteca
-        self.library_page = SpotifyLibraryPage(self)
-        self.stack.addWidget(self.library_page)
+#        self.library_page = SpotifyLibraryPage(self)
+#        self.stack.addWidget(self.library_page)
         
         # Página de historial
         self.history_page = self.create_history_page()
@@ -161,26 +162,26 @@ class ModernApp(QMainWindow):
     
     def setup_connections(self):
         """Configurar conexiones de señales."""
-        self.side_nav.page_changed.connect(self.on_page_changed)
+#        self.side_nav.page_changed.connect(self.on_page_changed)
         self.top_bar.action_clicked.connect(self.on_topbar_action)
     
-    def on_page_changed(self, index):
+#    def on_page_changed(self, index):
         """Manejar cambio de página con animación."""
         # Verificar acceso a biblioteca
-        if index == 2 and not self.spotify_client:
-            toast.warning("Conecta tu cuenta de Spotify primero")
-            self.side_nav.set_current_index(1)
-            return
+#        if index == 2 and not self.spotify_client:
+#            toast.warning("Conecta tu cuenta de Spotify primero")
+#            self.side_nav.set_current_index(1)
+#            return
         
         # Recargar historial
-        if index == 3:
-            self.load_history()
+#        if index == 3:
+#            self.load_history()
         
         # Actualizar título
-        self.top_bar.set_title(self.PAGE_TITLES.get(index, ""))
+#        self.top_bar.set_title(self.PAGE_TITLES.get(index, ""))
         
         # Animación de transición
-        self.animate_page_change(index)
+#        self.animate_page_change(index)
     
     def animate_page_change(self, new_index):
         """Cambiar página sin animación para evitar errores QPainter."""
@@ -271,28 +272,28 @@ class ModernApp(QMainWindow):
         link = self.history_table.item(row, 2).text()
         QMessageBox.information(self, "Enlace", f"Enlace de descarga: {link}")
     
-    def on_spotify_connected(self, spotify_client):
+#    def on_spotify_connected(self, spotify_client):
         """Callback cuando Spotify se conecta."""
-        self.spotify_client = spotify_client
+#        self.spotify_client = spotify_client
         
-        if hasattr(self, 'library_page'):
-            self.library_page.set_spotify_client(spotify_client)
+#        if hasattr(self, 'library_page'):
+#            self.library_page.set_spotify_client(spotify_client)
         
-        toast.success("¡Conectado a Spotify!")
-        logging.info("Spotify conectado en ventana principal")
+#        toast.success("¡Conectado a Spotify!")
+#        logging.info("Spotify conectado en ventana principal")
     
-    def on_spotify_disconnected(self):
-        """Callback cuando Spotify se desconecta."""
-        self.spotify_client = None
+#    def on_spotify_disconnected(self):
+#        """Callback cuando Spotify se desconecta."""
+#        self.spotify_client = None
         
-        if hasattr(self, 'library_page'):
-            self.library_page.clear_library()
+#        if hasattr(self, 'library_page'):
+#            self.library_page.clear_library()
         
-        if self.stack.currentIndex() == 2:
-            self.side_nav.set_current_index(1)
+ #       if self.stack.currentIndex() == 2:
+ #           self.side_nav.set_current_index(1)
         
-        toast.info("Desconectado de Spotify")
-        logging.info("Spotify desconectado")
+ #       toast.info("Desconectado de Spotify")
+ #       logging.info("Spotify desconectado")
     
     def center_on_screen(self):
         """Centrar la ventana en la pantalla."""

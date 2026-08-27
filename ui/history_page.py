@@ -1,3 +1,4 @@
+#ui/history_page.py
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QApplication, QTableWidget, 
                             QHeaderView, QTableWidgetItem, QHBoxLayout, QLineEdit, QPushButton, QMenu)
 from PyQt6.QtCore import Qt, pyqtSlot

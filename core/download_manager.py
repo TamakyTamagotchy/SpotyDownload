@@ -68,16 +68,16 @@ class DownloadManager(QObject, metaclass=Singleton):
         try:
             download_folder = self.settings.get("download_folder")
             quality = self.settings.get("default_quality")
-            
+
             worker_config = {
                 'spotify_url': {'class': DownloadWorker, 'is_qthread': False, 'data_func': lambda d: d['id']},
                 'spotify_track': {'class': SpotifyDownloadWorker, 'is_qthread': True, 'data_func': lambda d: [d]},
                 'spotify_playlist': {'class': SpotifyPlaylistDownloadWorker, 'is_qthread': True, 'data_func': lambda d: d['tracks']}
             }
-            
+
             worker = None
             is_qthread = False
-            
+
             if task['type'] in worker_config:
                 config = worker_config[task['type']]
                 worker = config['class'](config['data_func'](task['data']), download_folder, quality)
@@ -87,24 +87,15 @@ class DownloadManager(QObject, metaclass=Singleton):
                 task['worker'] = worker
                 task['status'] = 'downloading'
                 self.active_downloads.append(task)
-                
-                # Conectar señales principales
+
                 worker.finished.connect(lambda: self.on_task_finished(task))
-                
-                # Manejar diferencia en señal de error
-                if hasattr(worker, 'error'):
-                    worker.error.connect(lambda err: self.on_task_error(task, err))
-                elif hasattr(worker, 'error_occurred'):
-                    worker.error_occurred.connect(lambda err: self.on_task_error(task, err))
-                
-                # Conectar señales para la barra de progreso global
+                worker.error_occurred.connect(lambda err: self.on_task_error(task, err))
+
                 self._connect_progress_signals(worker, task)
-                
-                # Iniciar worker
+
                 if is_qthread:
                     worker.start()
                 else:
-                    # Crear thread para QObject worker
                     thread = QThread()
                     worker.moveToThread(thread)
                     thread.started.connect(worker.run)
@@ -113,9 +104,9 @@ class DownloadManager(QObject, metaclass=Singleton):
                     thread.finished.connect(thread.deleteLater)
                     task['thread'] = thread
                     thread.start()
-                    
+
                 self.task_started.emit(task['id'])
-                
+
         except Exception as e:
             logging.error(f"Error iniciando tarea {task['id']}: {e}")
             task['status'] = 'error'
@@ -146,42 +137,37 @@ class DownloadManager(QObject, metaclass=Singleton):
         self.process_queue()
 
     def _connect_progress_signals(self, worker, task):
-        """Conectar señales del worker a la barra de progreso global."""
+        """Conectar señales del worker a la barra de progreso global.
+
+        progress_updated, status_changed, converting, applying_metadata y
+        ask_replace están garantizados por BaseDownloadWorker. Solo
+        download_started/track_completed/track_info son extras opcionales
+        de algunas subclases.
+        """
         title = task.get('title', 'Descarga')
         cover_url = task.get('data', {}).get('cover_url')
-        
-        # Señales de progreso
-        if hasattr(worker, 'progress'):
-            worker.progress.connect(lambda p: progress_manager.update(p, f"Descargando: {title}"))
-        if hasattr(worker, 'progress_updated'):
-            worker.progress_updated.connect(lambda p: progress_manager.update(p, f"Descargando: {title}"))
-        
-        # Señales de estado
+
+        worker.progress_updated.connect(lambda p: progress_manager.update(p, f"Descargando: {title}"))
+        worker.status_changed.connect(self._update_status)
+        worker.converting.connect(progress_manager.converting)
+        worker.applying_metadata.connect(progress_manager.metadata)
+        worker.ask_replace.connect(
+            lambda song, filename, w=worker: self._on_file_exists(w, song, filename)
+        )
+
         if hasattr(worker, 'download_started'):
-            # La señal puede emitir nombre y cover_url
             try:
                 worker.download_started.connect(lambda name, url='': progress_manager.show(name, url or cover_url))
             except TypeError:
-                # Si falla, conectar sin cover_url
                 worker.download_started.connect(lambda name: progress_manager.show(name, cover_url))
-        if hasattr(worker, 'status_changed'):
-            worker.status_changed.connect(lambda status: self._update_status(status))
-        
-        # Señales de conversión y metadatos
-        if hasattr(worker, 'converting'):
-            worker.converting.connect(lambda: progress_manager.converting())
-        if hasattr(worker, 'applying_metadata'):
-            worker.applying_metadata.connect(lambda: progress_manager.metadata())
 
-        # Señal de archivo existente (modo "ask")
-        if hasattr(worker, 'ask_replace'):
-            worker.ask_replace.connect(
-                lambda song, filename, w=worker: self._on_file_exists(w, song, filename)
-            )
-        
-        # Mostrar la barra al inicio con portada
+        if hasattr(worker, 'track_completed'):
+            worker.track_completed.connect(lambda info, t=task: t.__setitem__('file_path', info.get('file_path')))
+        if hasattr(worker, 'track_info'):
+            worker.track_info.connect(lambda info, t=task: t.__setitem__('file_path', info.get('file_path')))
+
         progress_manager.show(title, cover_url)
-    
+
     def _update_status(self, status):
         """Actualizar solo el estado sin cambiar el progreso."""
         bar = progress_manager.get_progress_bar()

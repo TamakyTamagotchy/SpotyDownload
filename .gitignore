@@ -22,3 +22,6 @@ error_output.txt
 *.db
 *.sqlite
 *deno.exe
+
+#Carpetas 
+No necesarias

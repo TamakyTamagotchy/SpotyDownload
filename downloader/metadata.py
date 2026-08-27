@@ -20,7 +20,6 @@ from PIL import Image, UnidentifiedImageError
 # Intentar usar mutagen primero (más moderno y versátil)
 try:
     from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, TPE2, APIC, ID3NoHeaderError
-    from mutagen.mp3 import MP3
     from mutagen.flac import FLAC, Picture
     MUTAGEN_AVAILABLE = True
 except ImportError:

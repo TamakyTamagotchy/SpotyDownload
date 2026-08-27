@@ -12,4 +12,3 @@ def search_song(title, artist, album=None):
     except Exception as e:
         logging.error(f'Error en búsqueda: {e}')
         return None
-        return None

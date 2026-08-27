@@ -8,6 +8,29 @@ except ImportError:
     from fuzzywuzzy import fuzz
     logging.warning("rapidfuzz no instalado, usando fuzzywuzzy como fallback (más lento)")
 
+import re
+
+# Marcadores que distinguen versiones/ediciones de una misma canción base.
+# Si el título original trae uno de estos y el candidato de YouTube no
+# (o viceversa), es casi seguro que NO es la misma versión.
+_VERSION_MARKER_PATTERN = re.compile(
+    r'\b('
+    r'\d+(?:\.\d+)?'                    # números sueltos o con decimal: "2", "2.0", "3.5"
+    r'|remix|rmx|rework|edit'
+    r'|version|vip|extended|radio\s*edit'
+    r'|live|en\s*vivo|acoustic|acustico|unplugged'
+    r'|part\s*\d+|pt\.?\s*\d+|vol\.?\s*\d+'
+    r'|deluxe|instrumental'
+    r')\b',
+    re.IGNORECASE
+)
+
+def _extract_version_markers(text: str) -> set:
+    """Extrae marcadores de versión/remix/número que distinguen ediciones
+    de una misma canción (ej: 'Panti y Colale' vs 'Panti y Colale 2.0')."""
+    if not text:
+        return set()
+    return {m.strip().lower() for m in _VERSION_MARKER_PATTERN.findall(text)}
 class YouTubeMusicSearcher:
     """
     Singleton para buscar canciones en YouTube Music con algoritmo de coincidencia mejorado.
@@ -106,6 +129,13 @@ class YouTubeMusicSearcher:
                     if keyword in lower_title and keyword not in original_lower:
                         score -= 15
                         break
+                # Penalizar diferencias de versión/edición (ej: "2.0", "remix", "part 2")
+                # que el algoritmo de similitud de texto por sí solo no detecta bien.
+                query_markers = _extract_version_markers(title)
+                res_markers = _extract_version_markers(res_title)
+                marker_diff = query_markers.symmetric_difference(res_markers)
+                if marker_diff:
+                    score -= 35 * len(marker_diff)
 
                 if score > highest_score:
                     highest_score = score
